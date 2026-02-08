@@ -94,7 +94,6 @@ from ragbot.text_utils import (  # noqa: E402
     dedup_docs,
     diversify_docs,
     ensure_dir,
-    fix_broken_numbers,
     normalize_query,
     safe_page_range,
 )
