@@ -129,8 +129,11 @@ def has_number(text: str) -> bool:
 def fix_broken_numbers(text: str) -> str:
     if not text:
         return text
-    text = re.sub(r"(?<=\d)[\s\u00A0\u202F]+(?=\d)", "", text)
-    text = re.sub(r"(?<=\d),(?=\d{3}(\D|$))", "", text)
+    text = text.replace("\u00A0", " ").replace("\u202F", " ")
+    text = re.sub(r"(\d)\s+(\d)", r"\1\2", text)
+    text = re.sub(r"(\d)\s*[\n\r]+\s*(\d)", r"\1\2", text)
+    text = re.sub(r"(\d)\s*[\n\r ]+\s*([.,])\s*[\n\r ]+\s*(\d)", r"\1\2\3", text)
+    text = re.sub(r"(\d)\s*([.,])\s*(\d)\s*%", r"\1\2\3%", text)
     return text
 
 
