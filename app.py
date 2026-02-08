@@ -1136,6 +1136,7 @@ def reset_user_session(settings: Settings, user_id: int) -> None:
 from aiogram import Bot, Dispatcher, F  # noqa: E402
 from aiogram.filters import Command  # noqa: E402
 from aiogram.types import Message, Document as TgDocument  # noqa: E402
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 
 
 BOT_TOKEN = must_get_secret("BOT_TOKEN")
@@ -1206,10 +1207,20 @@ def is_pdf(doc: TgDocument) -> bool:
 @dp.message(F.document)
 async def on_pdf(msg: Message, bot: Bot):
     uid = msg.from_user.id
-    doc = msg.document
+    doc: TgDocument = msg.document
+
     if not doc or not is_pdf(doc):
         await msg.answer("Пришли, пожалуйста, PDF-файл.")
         return
+
+    # Можно заранее проверить размер, если Telegram прислал file_size
+    # (не всегда помогает, но иногда сразу даёт понятное сообщение)
+    max_hint_mb = 20
+    if getattr(doc, "file_size", None) and doc.file_size > max_hint_mb * 1024 * 1024:
+        await msg.answer(
+            f"⚠️ Файл выглядит большим (~{doc.file_size/1024/1024:.1f} MB). "
+            "Telegram Bot API может не дать его скачать. Если не получится — сожми/разбей PDF."
+        )
 
     async with get_user_lock(uid):
         # New doc → wipe old session
@@ -1220,8 +1231,66 @@ async def on_pdf(msg: Message, bot: Bot):
         pdf_path = user_pdf_path(SETTINGS, uid)
 
         await msg.answer("📥 Скачиваю PDF...")
-        file = await bot.get_file(doc.file_id)
-        await bot.download_file(file.file_path, destination=pdf_path)
+
+        # Скачивание
+        try:
+            # Получаем file_path (может упасть на больших файлах: "file is too big")
+            file = await bot.get_file(doc.file_id)
+
+            # Таймаут на скачивание, чтобы не зависать бесконечно
+            await asyncio.wait_for(
+                bot.download_file(file.file_path, destination=pdf_path),
+                timeout=180,
+            )
+
+        except TelegramBadRequest as e:
+            # Самый частый кейс у тебя: Telegram не отдаёт file_path
+            if "file is too big" in str(e).lower():
+                await msg.answer(
+                    "❌ PDF слишком большой для загрузки через Telegram Bot API.\n\n"
+                    "Что можно сделать:\n"
+                    "1) Сжать PDF (уменьшить качество/картинки)\n"
+                    "2) Разбить на несколько частей и прислать по очереди\n"
+                    "3) Прислать текстовую версию (без сканов), если есть\n\n"
+                    "После этого пришли PDF заново."
+                )
+                return
+
+            await msg.answer(
+                f"❌ Telegram вернул ошибку при загрузке файла: {e}\n"
+                "Попробуй прислать PDF ещё раз или /reset."
+            )
+            return
+
+        except asyncio.TimeoutError:
+            await msg.answer(
+                "❌ Не удалось скачать PDF: таймаут.\n"
+                "Попробуй ещё раз, либо сожми файл/разбей на части."
+            )
+            return
+
+        except TelegramNetworkError as e:
+            await msg.answer(
+                "❌ Сетевая ошибка при скачивании PDF.\n"
+                "Попробуй ещё раз через минуту."
+            )
+            return
+
+        except Exception as e:
+            logger.exception("PDF download failed: %s", e)
+            await msg.answer("❌ Не удалось скачать PDF из Telegram. Попробуй ещё раз или /reset.")
+            return
+
+        # Базовая проверка, что файл реально появился и не пустой
+        try:
+            if (not os.path.exists(pdf_path)) or os.path.getsize(pdf_path) < 1024:
+                await msg.answer(
+                    "❌ Файл скачался некорректно (пустой/повреждён). "
+                    "Попробуй прислать PDF ещё раз или сжать его."
+                )
+                return
+        except Exception:
+            pass
 
         await msg.answer("🔎 Индексирую… Это может занять 1–5 минут (зависит от PDF).")
 
@@ -1232,10 +1301,26 @@ async def on_pdf(msg: Message, bot: Bot):
             ingest_pdf(pdf_path, SETTINGS, index_dir=idx_dir)
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _do_ingest)
+        try:
+            await loop.run_in_executor(None, _do_ingest)
+        except Exception as e:
+            logger.exception("ingest failed: %s", e)
+            await msg.answer(
+                "❌ Ошибка при индексировании PDF.\n"
+                "Попробуй другой PDF или /reset."
+            )
+            return
 
         # Build agent and cache it
-        AGENTS[uid] = BestStableRAGAgent(SETTINGS, index_dir=idx_dir)
+        try:
+            AGENTS[uid] = BestStableRAGAgent(SETTINGS, index_dir=idx_dir)
+        except Exception as e:
+            logger.exception("agent build failed: %s", e)
+            await msg.answer(
+                "❌ Индекс построен, но не удалось поднять агента.\n"
+                "Попробуй /reset и загрузить PDF заново."
+            )
+            return
 
     await msg.answer("✅ Готово! Теперь задавай вопросы по документу.")
 

@@ -1,0 +1,10 @@
+cd /opt/tg-rag-bot
+cat > .gitignore <<'EOF'
+data/
+*.log
+.env
+EOF
+
+git add .gitignore
+git commit -m "Ignore runtime data"
+git push
