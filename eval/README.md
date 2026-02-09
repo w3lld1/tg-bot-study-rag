@@ -74,7 +74,19 @@ python eval/compare_runs.py \
 - `pdf_sha256`
 - `questions_sha256`
 
-## 6) Процесс в PR
+## 6) Multi-document benchmark (v1)
+
+Для проверки качества на нескольких документах:
+
+```bash
+PYTHONPATH=. python eval/benchmark/run_benchmark.py \
+  --config eval/benchmark/config.v1.json \
+  --out eval/runs/benchmark-v1-baseline.json
+```
+
+`summary.weighted_score` в этом отчёте — агрегированный benchmark-score по всем датасетам.
+
+## 7) Процесс в PR
 
 1. До изменения кода: прогон baseline.
 2. После изменения: прогон candidate.

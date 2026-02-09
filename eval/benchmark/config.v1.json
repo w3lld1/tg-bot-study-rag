@@ -1,0 +1,26 @@
+{
+  "name": "benchmark-v1-3docs",
+  "datasets": [
+    {
+      "id": "sber-2022",
+      "kind": "finance",
+      "pdf": "eval/data/source.pdf",
+      "questions": "eval/questions.jsonl",
+      "weight": 1.0
+    },
+    {
+      "id": "tech-gis-epd",
+      "kind": "tech-doc",
+      "pdf": "eval/data/tech-gis-epd.pdf",
+      "questions": "eval/benchmark/questions/tech-gis-epd.questions.jsonl",
+      "weight": 1.0
+    },
+    {
+      "id": "legal-labor-rules",
+      "kind": "legal",
+      "pdf": "eval/data/legal-labor-rules.pdf",
+      "questions": "eval/benchmark/questions/legal-labor-rules.questions.jsonl",
+      "weight": 1.0
+    }
+  ]
+}
