@@ -85,7 +85,11 @@ def detect_intent_fast(user_question: str):
         return "compare", 0.80
     if any(k in q for k in ["требован", "обязан", "должен", "услови", "необходимо", "запрещ", "разреш", "стандарт", "регламент"]):
         return "requirements", 0.78
-    if any(k in q for k in ["как ", "шаг", "процедур", "инструкц", "порядок", "алгоритм"]):
+    how_to_procedure = (
+        ("как " in q and any(v in q for v in ["сдел", "выполн", "оформ", "подат", "заполн", "пройти", "настро", "созда", "получ"]))
+        or any(k in q for k in ["шаг", "процедур", "инструкц", "порядок", "алгоритм"])
+    )
+    if how_to_procedure:
         return "procedure", 0.70
     if any(k in q for k in ["что такое", "определени", "термин", "означает"]):
         return "definition", 0.70

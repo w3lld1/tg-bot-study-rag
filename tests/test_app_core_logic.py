@@ -57,6 +57,7 @@ def test_invoke_json_robust_falls_back_to_string_chain():
         ("сравни 2021 и 2022", "compare"),
         ("какие требования стандарта", "requirements"),
         ("как сделать шаги процедуры", "procedure"),
+        ("как называется подсистема", "default"),
         ("что такое дефолт", "definition"),
         ("сколько процентов в 2026", "numbers_and_dates"),
         ("просто расскажи", "default"),
