@@ -46,6 +46,12 @@ python eval/compare_runs.py \
   --cand eval/runs/candidate.json
 ```
 
+По умолчанию скрипт проверяет совместимость прогонов по:
+- `pdf_sha256`
+- `questions_sha256`
+
+Если хэши не совпадают, сравнение завершается с ошибкой.
+
 ## 5) Формула расчёта score
 
 Для каждого вопроса:
@@ -72,5 +78,18 @@ python eval/compare_runs.py \
 
 1. До изменения кода: прогон baseline.
 2. После изменения: прогон candidate.
-3. `compare_runs.py` должен показать улучшение/не ухудшение.
-4. Если ухудшение — PR не мержим.
+3. Прогнать quality gate:
+
+```bash
+python eval/compare_runs.py \
+  --base eval/runs/baseline.json \
+  --cand eval/runs/candidate.json \
+  --min-delta 0.0 \
+  --max-regressions 0
+```
+
+- exit code `0` — gate passed
+- exit code `1` — gate failed (delta/regressions)
+- exit code `2` — incompatible runs (hash mismatch)
+
+4. Если gate не passed — PR не мержим.
