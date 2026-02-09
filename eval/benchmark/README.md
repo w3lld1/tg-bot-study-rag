@@ -20,7 +20,7 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
   --out eval/runs/benchmark-v1-baseline.json
 ```
 
-Мульти-run + gate (пример для CI):
+Мульти-run + gate (пример локально):
 
 ```bash
 PYTHONPATH=. python eval/benchmark/run_benchmark.py \
@@ -35,6 +35,31 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
   --max-drop-vs-baseline 0.03 \
   --min-delta -0.01
 ```
+
+## CI quality gate (PR)
+
+В `benchmark-gate` в CI теперь используется **fresh-run lightweight gate**:
+
+1. Запускается свежий benchmark:
+   - `eval/benchmark/run_benchmark.py`
+   - `--runs 2`
+   - `--max-workers 2`
+   - `--policy-variant control`
+   - `reuse_index = true` (по умолчанию, `--no-reuse-index` не передаётся)
+2. После этого запускается `eval/benchmark/gate_summary.py` по **только что сгенерированному** summary (`eval/runs/benchmark-ci-pr-summary.json`).
+3. Baseline используется из `eval/experiments/phaseb-control-multirun-summary.json`, если файл есть.
+   - Если baseline отсутствует, gate выполняется без baseline-сравнения, но со стабильностными проверками (std/shape checks), с явным сообщением в логах.
+
+Пороги в CI gate:
+- `max_regressions = 1` (только когда baseline доступен)
+- `max_std_weighted = 0.021`
+- `max_std_question = 0.02`
+- `max_drop_vs_baseline = 0.03` (только когда baseline доступен)
+- `min_delta = -0.01` (только когда baseline доступен)
+
+Ограничения:
+- Gate проверяет качество на облегчённом fresh-run (2 запуска), а не на заранее сохранённом candidate JSON.
+- Для ограничения длительности job в CI включён `timeout-minutes`.
 
 Коды выхода для CI:
 - `0` — PASS
