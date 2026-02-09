@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +47,17 @@ class EvalSettings:
     second_pass_k_multiplier: int = 5
 
 
+CITATION_PAT = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def load_questions(path: Path) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -67,24 +80,75 @@ def split_debug_answer(raw: str) -> tuple[str, str]:
     return "", raw.strip()
 
 
+def _normalize_text(s: str) -> str:
+    s = (s or "").lower().replace("ё", "е")
+    s = s.replace("\u00a0", " ").replace("\u202f", " ")
+
+    s = re.sub(r"\bболее\s+", ">", s)
+    s = re.sub(r"\bсвыше\s+", ">", s)
+    s = re.sub(r"\bменее\s+", "<", s)
+
+    s = re.sub(r"(?<=\d)\s+(?=\d)", "", s)
+    s = re.sub(r"(?<=\d),(?=\d)", ".", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _groups_from_question(q: dict[str, Any]) -> list[list[str]]:
+    groups: list[list[str]] = []
+
+    for x in q.get("must_include", []) or []:
+        groups.append([str(x)])
+
+    # OR groups: each item can be string or list[str]
+    for g in q.get("must_include_any", []) or []:
+        if isinstance(g, list):
+            groups.append([str(x) for x in g])
+        else:
+            groups.append([str(g)])
+
+    return groups
+
+
 def score_answer(answer: str, q: dict[str, Any]) -> dict[str, Any]:
-    lower = answer.lower()
-    must_include = q.get("must_include") or []
-    must_not_include = q.get("must_not_include") or []
+    norm_answer = _normalize_text(answer)
 
-    include_hits = sum(1 for x in must_include if str(x).lower() in lower)
-    exclude_hits = sum(1 for x in must_not_include if str(x).lower() in lower)
+    groups = _groups_from_question(q)
+    must_not_include = [str(x) for x in (q.get("must_not_include") or [])]
 
-    include_rate = 1.0 if not must_include else include_hits / len(must_include)
+    include_hits = 0
+    for g in groups:
+        g_norm = [_normalize_text(x) for x in g]
+        if any(x and x in norm_answer for x in g_norm):
+            include_hits += 1
+
+    exclude_hits = 0
+    for x in must_not_include:
+        xn = _normalize_text(x)
+        if xn and xn in norm_answer:
+            exclude_hits += 1
+
+    include_total = len(groups)
+    include_rate = 1.0 if include_total == 0 else include_hits / include_total
     safe_ok = 1.0 if exclude_hits == 0 else 0.0
 
-    score = 0.7 * include_rate + 0.3 * safe_ok
+    has_citation = bool(CITATION_PAT.search(answer or ""))
+    require_citation = bool(q.get("require_citation", False))
+    citation_ok = 1.0 if (not require_citation or has_citation) else 0.0
+
+    base_score = 0.7 * include_rate + 0.3 * safe_ok
+    citation_penalty = 0.2 if (require_citation and not has_citation) else 0.0
+    score = max(0.0, base_score - citation_penalty)
+
     return {
         "include_hits": include_hits,
-        "include_total": len(must_include),
+        "include_total": include_total,
         "exclude_hits": exclude_hits,
         "include_rate": include_rate,
         "safe_ok": bool(safe_ok),
+        "require_citation": require_citation,
+        "citation_ok": bool(citation_ok),
+        "citation_penalty": citation_penalty,
         "score": score,
     }
 
@@ -136,6 +200,13 @@ def main() -> None:
         "summary": {
             "questions": len(rows),
             "weighted_score": (weighted_score / weighted_sum) if weighted_sum else 0.0,
+            "pdf_sha256": sha256_file(pdf),
+            "questions_sha256": sha256_file(questions_path),
+            "formula": {
+                "base": "question_score = 0.7 * include_rate + 0.3 * safe_ok",
+                "citation_penalty": "-0.2 if require_citation and citation missing",
+                "overall": "weighted_score = sum(question_score_i * weight_i) / sum(weight_i)",
+            },
         },
         "results": rows,
     }
