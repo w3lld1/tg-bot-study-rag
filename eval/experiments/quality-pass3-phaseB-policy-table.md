@@ -40,3 +40,10 @@ Move retrieval/second-pass policy from hardcoded constants in `agent.py` to expl
   - question_weighted_score `0.7096569174544819`
 - Control mean is below that reference baseline; AB mean is closer but still below on average.
 - Recommendation: keep `control` as default for stability; use AB behind explicit experiment flag until variance is reduced.
+
+## Speed-up Step 1 implemented
+- `eval/run_eval.py` now supports reusable index mode:
+  - `--index-dir` (persistent index path)
+  - `--no-reuse-index` (force rebuild)
+- `eval/benchmark/run_benchmark.py` now passes reusable index paths per dataset via `--index-cache-dir`.
+- This removes repeated ingest work across repeated benchmark runs for same dataset.

@@ -16,7 +16,16 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def run_one(repo_root: Path, pdf: str, questions: str, out: Path, policy_variant: str, policy_strict: bool) -> dict[str, Any]:
+def run_one(
+    repo_root: Path,
+    pdf: str,
+    questions: str,
+    out: Path,
+    policy_variant: str,
+    policy_strict: bool,
+    index_dir: Path,
+    reuse_index: bool,
+) -> dict[str, Any]:
     cmd = [
         sys.executable,
         "eval/run_eval.py",
@@ -28,9 +37,13 @@ def run_one(repo_root: Path, pdf: str, questions: str, out: Path, policy_variant
         str(out),
         "--policy-variant",
         policy_variant,
+        "--index-dir",
+        str(index_dir),
     ]
     if policy_strict:
         cmd.append("--policy-strict")
+    if not reuse_index:
+        cmd.append("--no-reuse-index")
     p = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"run_eval failed for {pdf}:\n{p.stderr or p.stdout}")
@@ -42,6 +55,8 @@ def main() -> None:
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tmp-dir", default="eval/runs")
+    ap.add_argument("--index-cache-dir", default="eval/.cache/indexes")
+    ap.add_argument("--no-reuse-index", action="store_true")
     ap.add_argument("--policy-variant", default="control")
     ap.add_argument("--policy-strict", action="store_true")
     args = ap.parse_args()
@@ -51,6 +66,8 @@ def main() -> None:
     out_path = (repo_root / args.out).resolve()
     tmp_dir = (repo_root / args.tmp_dir).resolve()
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    index_cache_dir = (repo_root / args.index_cache_dir).resolve()
+    index_cache_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = json.loads(config_path.read_text(encoding="utf-8"))
     datasets = cfg.get("datasets", [])
@@ -77,6 +94,9 @@ def main() -> None:
 
         one_out = tmp_dir / f"{ds_id}.json"
 
+        pdf_hash_short = sha256_file(pdf_path)[:12]
+        index_dir = index_cache_dir / f"{ds_id}-{pdf_hash_short}"
+
         report = run_one(
             repo_root,
             str(pdf_path),
@@ -84,6 +104,8 @@ def main() -> None:
             one_out,
             policy_variant=args.policy_variant,
             policy_strict=bool(args.policy_strict),
+            index_dir=index_dir,
+            reuse_index=not bool(args.no_reuse_index),
         )
         score = float(report["summary"]["weighted_score"])
         q_count = int(report["summary"].get("questions", 0) or 0)
@@ -106,6 +128,7 @@ def main() -> None:
                 "questions_count": q_count,
                 "weighted_score": score,
                 "run": str(one_out.relative_to(repo_root)),
+                "index_dir": str(index_dir.relative_to(repo_root)),
             }
         )
 
@@ -115,6 +138,8 @@ def main() -> None:
             "datasets": len(rows),
             "policy_variant": args.policy_variant,
             "policy_strict": bool(args.policy_strict),
+            "index_cache_dir": str(index_cache_dir.relative_to(repo_root)),
+            "reuse_index": not bool(args.no_reuse_index),
             "weighted_score": (weighted_score / total_weight) if total_weight else 0.0,
             "question_weighted_score": (question_weighted_score / total_questions) if total_questions else 0.0,
             "total_questions": total_questions,

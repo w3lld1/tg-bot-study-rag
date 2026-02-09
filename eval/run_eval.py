@@ -156,6 +156,21 @@ def score_answer(answer: str, q: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _index_ready(index_dir: Path) -> bool:
+    return (
+        (index_dir / "meta.json").exists()
+        and (index_dir / "chunks.jsonl.gz").exists()
+        and (index_dir / "faiss").exists()
+    )
+
+
+def _maybe_ingest(pdf: Path, settings: EvalSettings, index_dir: Path, reuse_index: bool) -> None:
+    if reuse_index and _index_ready(index_dir):
+        return
+    index_dir.mkdir(parents=True, exist_ok=True)
+    ingest_pdf(str(pdf), settings, str(index_dir), agent_version="eval")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", required=True)
@@ -163,6 +178,8 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--policy-variant", default=os.getenv("POLICY_VARIANT", "control"))
     ap.add_argument("--policy-strict", action="store_true", help="Fail on unknown policy variant/intent")
+    ap.add_argument("--index-dir", default="", help="Path to reusable index directory. If exists, ingest is skipped.")
+    ap.add_argument("--no-reuse-index", action="store_true", help="Force rebuild index even if index-dir is ready.")
     args = ap.parse_args()
 
     pdf = Path(args.pdf)
@@ -176,14 +193,15 @@ def main() -> None:
         policy_strict=bool(args.policy_strict),
     )
 
-    with tempfile.TemporaryDirectory(prefix="rag-eval-") as tmp:
-        idx_dir = Path(tmp) / "index"
-        ingest_pdf(str(pdf), settings, str(idx_dir), agent_version="eval")
-        agent = BestStableRAGAgent(settings, index_dir=str(idx_dir), agent_version="eval")
+    rows = []
+    weighted_sum = 0.0
+    weighted_score = 0.0
 
-        rows = []
-        weighted_sum = 0.0
-        weighted_score = 0.0
+    if args.index_dir:
+        idx_dir = Path(args.index_dir).resolve()
+        reuse_index = not bool(args.no_reuse_index)
+        _maybe_ingest(pdf, settings, idx_dir, reuse_index=reuse_index)
+        agent = BestStableRAGAgent(settings, index_dir=str(idx_dir), agent_version="eval")
 
         for q in questions:
             raw = agent.ask(q["question"])
@@ -204,6 +222,31 @@ def main() -> None:
                     "metrics": m,
                 }
             )
+    else:
+        with tempfile.TemporaryDirectory(prefix="rag-eval-") as tmp:
+            idx_dir = Path(tmp) / "index"
+            ingest_pdf(str(pdf), settings, str(idx_dir), agent_version="eval")
+            agent = BestStableRAGAgent(settings, index_dir=str(idx_dir), agent_version="eval")
+
+            for q in questions:
+                raw = agent.ask(q["question"])
+                debug, answer = split_debug_answer(raw)
+                m = score_answer(answer, q)
+                w = float(q.get("weight", 1.0))
+                weighted_sum += w
+                weighted_score += m["score"] * w
+
+                rows.append(
+                    {
+                        "id": q["id"],
+                        "question": q["question"],
+                        "weight": w,
+                        "debug": debug,
+                        "answer": answer,
+                        "trace": agent.get_last_trace() if hasattr(agent, "get_last_trace") else {},
+                        "metrics": m,
+                    }
+                )
 
     report = {
         "summary": {
