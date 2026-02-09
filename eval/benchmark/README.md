@@ -26,6 +26,9 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
 - агрегированный `question_weighted_score` (по количеству вопросов)
 - хэши PDF и question-set'ов для валидации сравнения
 
+Текущий baseline v1 зафиксирован в:
+- `eval/baselines/benchmark-v1-baseline-2026-02-09.md`
+
 ## Принцип
 
 - Улучшаем качество на всех документах одновременно
