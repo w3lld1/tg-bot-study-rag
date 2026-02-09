@@ -44,7 +44,19 @@ python eval/compare_runs.py \
   --cand eval/runs/candidate.json
 ```
 
-## 5) Процесс в PR
+## 5) Формула расчёта score
+
+Для каждого вопроса:
+
+- `include_rate = include_hits / include_total` (если `must_include` пустой, то `include_rate = 1.0`)
+- `safe_ok = 1.0`, если в ответе нет ни одного `must_not_include`, иначе `0.0`
+- **`question_score = 0.7 * include_rate + 0.3 * safe_ok`**
+
+Итоговый score прогона:
+
+- **`weighted_score = sum(question_score_i * weight_i) / sum(weight_i)`**
+
+## 6) Процесс в PR
 
 1. До изменения кода: прогон baseline.
 2. После изменения: прогон candidate.
