@@ -45,6 +45,7 @@ class EvalSettings:
     second_pass_enabled: bool = True
     second_pass_multiquery_n: int = 6
     second_pass_k_multiplier: int = 5
+    policy_variant: str = "control"  # control | ab_retrieval_v1
 
 
 CITATION_PAT = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)

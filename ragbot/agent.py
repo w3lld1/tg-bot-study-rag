@@ -30,6 +30,7 @@ from ragbot.core_logic import (
     rerank_numbers_heuristic,
 )
 from ragbot.indexing import load_index
+from ragbot.policy import get_retrieval_policy, get_second_pass_overrides
 from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, normalize_query
 
 
@@ -108,9 +109,10 @@ class BestStableRAGAgent:
             mult = max(1, int(o.get("numbers_k_multiplier", self.settings.numbers_k_multiplier)))
             bm25_k = max(bm25_k * mult, bm25_k + 20)
             faiss_k = max(faiss_k * mult, faiss_k + 20)
-            force_multiquery = True
-        else:
-            force_multiquery = False
+
+        policy = get_retrieval_policy(self.settings, intent)
+        force_multiquery = bool(policy.get("force_multiquery", intent == "numbers_and_dates"))
+        cov_threshold = float(policy.get("cov_threshold", 0.50))
 
         trace: Dict[str, Any] = {
             "query": query,
@@ -121,6 +123,8 @@ class BestStableRAGAgent:
             "multiquery_n": mq_n,
             "k_per_query": k_per_query,
             "force_multiquery": force_multiquery,
+            "cov_threshold": cov_threshold,
+            "policy_variant": policy.get("variant"),
             "overrides": dict(o),
             "multiquery_triggered": False,
             "multiquery_queries": [],
@@ -134,7 +138,7 @@ class BestStableRAGAgent:
         cov = coverage_score(query, docs, intent)
         trace["coverage"] = float(cov)
 
-        if multiquery_enabled and (force_multiquery or cov < 0.50):
+        if multiquery_enabled and (force_multiquery or cov < cov_threshold):
             trace["multiquery_triggered"] = True
             fallback = {"queries": []}
             mq = invoke_json_robust(
@@ -245,19 +249,8 @@ class BestStableRAGAgent:
             "needs_retry": needs_retry,
         }
 
-    def _second_pass_overrides(self) -> Dict[str, Any]:
-        mult = int(self.settings.second_pass_k_multiplier)
-        return {
-            "multiquery_n": int(self.settings.second_pass_multiquery_n),
-            "multiquery_k_per_query": max(self.settings.multiquery_k_per_query * mult, self.settings.multiquery_k_per_query + 30),
-            "bm25_k": max(self.settings.bm25_k * mult, self.settings.bm25_k + 30),
-            "faiss_k": max(self.settings.faiss_k * mult, self.settings.faiss_k + 30),
-            "numbers_k_multiplier": max(self.settings.numbers_k_multiplier, 1),
-            "numbers_neighbors_window": self.settings.numbers_neighbors_window,
-            "numbers_disable_diversify": self.settings.numbers_disable_diversify,
-            "rerank_keep": max(self.settings.rerank_keep, 14),
-            "rerank_pool": self.settings.rerank_pool,
-        }
+    def _second_pass_overrides(self, intent: str) -> Dict[str, Any]:
+        return get_second_pass_overrides(self.settings, intent)
 
     def _should_second_pass(self, intent: str, validation: Dict[str, Any]) -> bool:
         return bool(
@@ -307,7 +300,7 @@ class BestStableRAGAgent:
 
         trace["second_pass"] = {"triggered": False}
         if self._should_second_pass(intent, validation):
-            overrides = self._second_pass_overrides()
+            overrides = self._second_pass_overrides(intent)
             docs2, retrieval_trace2 = self._retrieve_with_trace(query, intent, overrides=overrides)
             context2 = format_context(docs2, limit=self.settings.final_docs_limit, max_chars=self.settings.max_context_chars)
             answer2 = self._answer_stage(intent, user_question, context2, fallback_answer=answer)

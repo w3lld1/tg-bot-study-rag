@@ -136,6 +136,9 @@ class Settings:
     second_pass_multiquery_n: int = 6
     second_pass_k_multiplier: int = 5
 
+    # Phase B policy table / A-B toggles
+    policy_variant: str = "control"  # control | ab_retrieval_v1
+
 
 
 
