@@ -1,0 +1,36 @@
+{
+  "label": "phaseb-control",
+  "n": 3,
+  "weighted_score": {
+    "mean": 0.7271022263071896,
+    "std": 0.0029224824008146823,
+    "min": 0.723500889939309,
+    "max": 0.7306590657096171
+  },
+  "question_weighted_score": {
+    "mean": 0.6959516697303922,
+    "std": 0.0021918618006110564,
+    "min": 0.6932506674544818,
+    "max": 0.698619299282213
+  },
+  "runs": [
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-control-run1.json",
+      "weighted_score": 0.7271467232726425,
+      "question_weighted_score": 0.6959850424544819,
+      "policy_variant": "control"
+    },
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-control-run2.json",
+      "weighted_score": 0.7306590657096171,
+      "question_weighted_score": 0.698619299282213,
+      "policy_variant": "control"
+    },
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-control-run3.json",
+      "weighted_score": 0.723500889939309,
+      "question_weighted_score": 0.6932506674544818,
+      "policy_variant": "control"
+    }
+  ]
+}

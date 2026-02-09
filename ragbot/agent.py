@@ -30,7 +30,7 @@ from ragbot.core_logic import (
     rerank_numbers_heuristic,
 )
 from ragbot.indexing import load_index
-from ragbot.policy import get_retrieval_policy, get_second_pass_overrides
+from ragbot.policy import get_retrieval_policy, get_second_pass_overrides, should_trigger_multiquery
 from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, normalize_query
 
 
@@ -125,6 +125,7 @@ class BestStableRAGAgent:
             "force_multiquery": force_multiquery,
             "cov_threshold": cov_threshold,
             "policy_variant": policy.get("variant"),
+            "policy_rule_id": policy.get("rule_id"),
             "overrides": dict(o),
             "multiquery_triggered": False,
             "multiquery_queries": [],
@@ -138,7 +139,20 @@ class BestStableRAGAgent:
         cov = coverage_score(query, docs, intent)
         trace["coverage"] = float(cov)
 
-        if multiquery_enabled and (force_multiquery or cov < cov_threshold):
+        mq_triggered = should_trigger_multiquery(
+            multiquery_enabled=multiquery_enabled,
+            force_multiquery=force_multiquery,
+            coverage=float(cov),
+            cov_threshold=cov_threshold,
+        )
+        trace["multiquery_decision"] = {
+            "coverage": float(cov),
+            "cov_threshold": cov_threshold,
+            "force_multiquery": force_multiquery,
+            "triggered": mq_triggered,
+        }
+
+        if mq_triggered:
             trace["multiquery_triggered"] = True
             fallback = {"queries": []}
             mq = invoke_json_robust(

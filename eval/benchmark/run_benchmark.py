@@ -16,7 +16,7 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def run_one(repo_root: Path, pdf: str, questions: str, out: Path) -> dict[str, Any]:
+def run_one(repo_root: Path, pdf: str, questions: str, out: Path, policy_variant: str, policy_strict: bool) -> dict[str, Any]:
     cmd = [
         sys.executable,
         "eval/run_eval.py",
@@ -26,7 +26,11 @@ def run_one(repo_root: Path, pdf: str, questions: str, out: Path) -> dict[str, A
         questions,
         "--out",
         str(out),
+        "--policy-variant",
+        policy_variant,
     ]
+    if policy_strict:
+        cmd.append("--policy-strict")
     p = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"run_eval failed for {pdf}:\n{p.stderr or p.stdout}")
@@ -38,6 +42,8 @@ def main() -> None:
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tmp-dir", default="eval/runs")
+    ap.add_argument("--policy-variant", default="control")
+    ap.add_argument("--policy-strict", action="store_true")
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -71,7 +77,14 @@ def main() -> None:
 
         one_out = tmp_dir / f"{ds_id}.json"
 
-        report = run_one(repo_root, str(pdf_path), str(questions_path), one_out)
+        report = run_one(
+            repo_root,
+            str(pdf_path),
+            str(questions_path),
+            one_out,
+            policy_variant=args.policy_variant,
+            policy_strict=bool(args.policy_strict),
+        )
         score = float(report["summary"]["weighted_score"])
         q_count = int(report["summary"].get("questions", 0) or 0)
 
@@ -100,6 +113,8 @@ def main() -> None:
         "summary": {
             "benchmark": cfg.get("name", "benchmark"),
             "datasets": len(rows),
+            "policy_variant": args.policy_variant,
+            "policy_strict": bool(args.policy_strict),
             "weighted_score": (weighted_score / total_weight) if total_weight else 0.0,
             "question_weighted_score": (question_weighted_score / total_questions) if total_questions else 0.0,
             "total_questions": total_questions,

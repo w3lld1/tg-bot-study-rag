@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -46,6 +47,7 @@ class EvalSettings:
     second_pass_multiquery_n: int = 6
     second_pass_k_multiplier: int = 5
     policy_variant: str = "control"  # control | ab_retrieval_v1
+    policy_strict: bool = True
 
 
 CITATION_PAT = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
@@ -159,6 +161,8 @@ def main() -> None:
     ap.add_argument("--pdf", required=True)
     ap.add_argument("--questions", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--policy-variant", default=os.getenv("POLICY_VARIANT", "control"))
+    ap.add_argument("--policy-strict", action="store_true", help="Fail on unknown policy variant/intent")
     args = ap.parse_args()
 
     pdf = Path(args.pdf)
@@ -167,7 +171,10 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     questions = load_questions(questions_path)
-    settings = EvalSettings()
+    settings = EvalSettings(
+        policy_variant=str(args.policy_variant or "control").strip().lower(),
+        policy_strict=bool(args.policy_strict),
+    )
 
     with tempfile.TemporaryDirectory(prefix="rag-eval-") as tmp:
         idx_dir = Path(tmp) / "index"
@@ -202,6 +209,8 @@ def main() -> None:
         "summary": {
             "questions": len(rows),
             "weighted_score": (weighted_score / weighted_sum) if weighted_sum else 0.0,
+            "policy_variant": settings.policy_variant,
+            "policy_strict": settings.policy_strict,
             "pdf_sha256": sha256_file(pdf),
             "questions_sha256": sha256_file(questions_path),
             "formula": {
