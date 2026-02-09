@@ -1,0 +1,3 @@
+{"id":"q001","question":"Какая ключевая тема документа?","must_include":[],"must_not_include":["XX","??"],"weight":1.0}
+{"id":"q002","question":"Какие главные выводы приведены в документе?","must_include":[],"must_not_include":["XX","??"],"weight":1.0}
+{"id":"q003","question":"Какие числовые показатели указаны?","must_include":[],"must_not_include":["XX","??"],"weight":1.0}
