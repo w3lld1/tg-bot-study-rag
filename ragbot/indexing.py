@@ -6,18 +6,74 @@ import re
 from collections import OrderedDict
 from typing import Any, List, Optional
 
+import numpy as np
 import pymupdf as fitz
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_community.retrievers import BM25Retriever
-from langchain_community.vectorstores import FAISS
 from langchain_gigachat.embeddings import GigaChatEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+try:
+    from langchain_community.vectorstores import FAISS as _FAISS
+except Exception:
+    _FAISS = None
 
 from ragbot.text_utils import ensure_dir, fix_broken_numbers, normalize_query
 
 
 logger = logging.getLogger("tg-rag-bot")
+
+
+class _SimpleVectorStore:
+    def __init__(self, docs: List[Document], vectors: np.ndarray, embeddings: Embeddings):
+        self.docs = docs
+        self.vectors = vectors.astype(np.float32)
+        self.embeddings = embeddings
+
+    @staticmethod
+    def _norm(a: np.ndarray) -> np.ndarray:
+        n = np.linalg.norm(a, axis=1, keepdims=True)
+        n[n == 0] = 1.0
+        return a / n
+
+    @classmethod
+    def from_documents(cls, docs: List[Document], embeddings: Embeddings):
+        vecs = embeddings.embed_documents([d.page_content or "" for d in docs])
+        arr = np.asarray(vecs, dtype=np.float32)
+        arr = cls._norm(arr)
+        return cls(docs=docs, vectors=arr, embeddings=embeddings)
+
+    def similarity_search(self, query: str, k: int = 4) -> List[Document]:
+        q = np.asarray([self.embeddings.embed_query(query)], dtype=np.float32)
+        q = self._norm(q)
+        scores = np.dot(self.vectors, q[0])
+        idx = np.argsort(-scores)[: max(1, int(k))]
+        return [self.docs[int(i)] for i in idx]
+
+    def save_local(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "simple_docs.jsonl"), "w", encoding="utf-8") as f:
+            for d in self.docs:
+                f.write(json.dumps({"page_content": d.page_content, "metadata": d.metadata or {}}, ensure_ascii=False) + "\n")
+        np.save(os.path.join(path, "simple_vecs.npy"), self.vectors)
+
+    @classmethod
+    def load_local(cls, path: str, embeddings: Embeddings, allow_dangerous_deserialization: bool = False):
+        docs: List[Document] = []
+        with open(os.path.join(path, "simple_docs.jsonl"), "r", encoding="utf-8") as f:
+            for line in f:
+                rec = json.loads(line)
+                docs.append(Document(page_content=rec.get("page_content", ""), metadata=rec.get("metadata", {}) or {}))
+        vecs = np.load(os.path.join(path, "simple_vecs.npy"))
+        return cls(docs=docs, vectors=vecs, embeddings=embeddings)
+
+
+def _get_vectorstore_cls():
+    if _FAISS is not None:
+        return _FAISS
+    logger.warning("langchain_community.vectorstores.FAISS недоступен; используем fallback _SimpleVectorStore")
+    return _SimpleVectorStore
 
 
 class CachedEmbeddings(Embeddings):
@@ -218,8 +274,9 @@ def ingest_pdf(pdf_path: str, settings: Any, index_dir: str, agent_version: str)
     chunk_docs = chunk_parent_docs(parent_docs, settings)
     logger.info(f"[ingest] Chunk docs: {len(chunk_docs)}")
 
-    logger.info("[ingest] Building FAISS...")
-    vectorstore = FAISS.from_documents(chunk_docs, embeddings)
+    vs_cls = _get_vectorstore_cls()
+    logger.info("[ingest] Building vector index (%s)...", getattr(vs_cls, "__name__", str(vs_cls)))
+    vectorstore = vs_cls.from_documents(chunk_docs, embeddings)
     vectorstore.save_local(faiss_dir)
 
     logger.info("[ingest] Writing chunks.jsonl.gz + meta.json ...")
@@ -255,19 +312,22 @@ def load_index(settings: Any, index_dir: str, llm_builder):
 
     _check_settings_compat(meta, settings)
 
+    vs_cls = _get_vectorstore_cls()
     allow_danger = bool(settings.allow_dangerous_faiss_deserialization) or (
         os.getenv("ALLOW_DANGEROUS_FAISS_DESERIALIZATION", "").strip() == "1"
     )
     try:
-        vectorstore = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=False)
+        vectorstore = vs_cls.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=False)
     except Exception:
+        if vs_cls is not _FAISS:
+            raise
         if not allow_danger:
             raise RuntimeError(
                 "FAISS.load_local не удалось без dangerous deserialization. "
                 "Если доверяешь файлам индекса — включи allow_dangerous_faiss_deserialization=True "
                 "или env ALLOW_DANGEROUS_FAISS_DESERIALIZATION=1."
             )
-        vectorstore = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
+        vectorstore = vs_cls.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
 
     chunk_docs: List[Document] = _read_chunks_jsonl_gz(chunks_jsonl_gz)
     if not chunk_docs:

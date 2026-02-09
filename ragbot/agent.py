@@ -22,7 +22,6 @@ from ragbot.chains import (
 from ragbot.core_logic import (
     add_neighbors_from_parent_map,
     answer_numbers_not_in_context,
-    contains_fake_pages,
     coverage_score,
     format_context,
     invoke_json_robust,
@@ -30,7 +29,7 @@ from ragbot.core_logic import (
     rerank_numbers_heuristic,
 )
 from ragbot.indexing import load_index
-from ragbot.text_utils import dedup_docs, diversify_docs, normalize_query
+from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, normalize_query
 
 
 logger = logging.getLogger("tg-rag-bot")
