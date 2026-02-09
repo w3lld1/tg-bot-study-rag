@@ -76,7 +76,7 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
 - `run_manifest` по каждому run: `start_at`, `end_at`, `elapsed_sec`, `status`, `error`
 
 Текущий baseline v1 зафиксирован в:
-- `eval/baselines/benchmark-v1-baseline-2026-02-09.md`
+- `eval/baselines/benchmark-v1-baseline-2026-02-09-after-phasec.md`
 
 ## Принцип
 
