@@ -5,6 +5,7 @@ import json
 import statistics
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,66 @@ def run_one(
     return json.loads(out.read_text(encoding="utf-8"))
 
 
+def _run_dataset_once(
+    *,
+    repo_root: Path,
+    ds: dict[str, Any],
+    ds_idx: int,
+    tmp_dir: Path,
+    index_cache_dir: Path,
+    policy_variant: str,
+    policy_strict: bool,
+    reuse_index: bool,
+    run_tag: str,
+) -> tuple[int, dict[str, Any], float, float, int]:
+    if "id" not in ds or "pdf" not in ds or "questions" not in ds:
+        raise ValueError(f"Dataset #{ds_idx} in config is missing one of required keys: id, pdf, questions")
+
+    ds_id = ds["id"]
+    w = float(ds.get("weight", 1.0))
+    pdf_path = (repo_root / ds["pdf"]).resolve()
+    questions_path = (repo_root / ds["questions"]).resolve()
+
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF file not found for dataset '{ds_id}': {pdf_path}")
+    if not questions_path.exists():
+        raise FileNotFoundError(f"Questions file not found for dataset '{ds_id}': {questions_path}")
+
+    one_out = tmp_dir / f"{run_tag}.{ds_id}.json"
+    pdf_hash = sha256_file(pdf_path)
+    questions_hash = sha256_file(questions_path)
+    pdf_hash_short = pdf_hash[:12]
+    index_dir = index_cache_dir / f"{ds_id}-{pdf_hash_short}"
+
+    report = run_one(
+        repo_root,
+        str(pdf_path),
+        str(questions_path),
+        one_out,
+        policy_variant=policy_variant,
+        policy_strict=policy_strict,
+        index_dir=index_dir,
+        reuse_index=reuse_index,
+    )
+    score = float(report["summary"]["weighted_score"])
+    q_count = int(report["summary"].get("questions", 0) or 0)
+
+    row = {
+        "id": ds_id,
+        "kind": ds.get("kind", "unknown"),
+        "weight": w,
+        "pdf": ds["pdf"],
+        "questions": ds["questions"],
+        "pdf_sha256": pdf_hash,
+        "questions_sha256": questions_hash,
+        "questions_count": q_count,
+        "weighted_score": score,
+        "run": str(one_out.relative_to(repo_root)),
+        "index_dir": str(index_dir.relative_to(repo_root)),
+    }
+    return ds_idx, row, w, score, q_count
+
+
 def run_benchmark_once(
     *,
     repo_root: Path,
@@ -70,6 +131,7 @@ def run_benchmark_once(
     policy_strict: bool,
     reuse_index: bool,
     run_tag: str,
+    max_workers: int,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     total_weight = 0.0
@@ -77,59 +139,53 @@ def run_benchmark_once(
     total_questions = 0
     question_weighted_score = 0.0
 
-    for idx, ds in enumerate(datasets, start=1):
-        if "id" not in ds or "pdf" not in ds or "questions" not in ds:
-            raise ValueError(f"Dataset #{idx} in config is missing one of required keys: id, pdf, questions")
+    workers = max(1, int(max_workers))
+    tasks = [(idx, ds) for idx, ds in enumerate(datasets, start=1)]
 
-        ds_id = ds["id"]
-        w = float(ds.get("weight", 1.0))
-        pdf_path = (repo_root / ds["pdf"]).resolve()
-        questions_path = (repo_root / ds["questions"]).resolve()
+    if workers == 1:
+        results = [
+            _run_dataset_once(
+                repo_root=repo_root,
+                ds=ds,
+                ds_idx=idx,
+                tmp_dir=tmp_dir,
+                index_cache_dir=index_cache_dir,
+                policy_variant=policy_variant,
+                policy_strict=policy_strict,
+                reuse_index=reuse_index,
+                run_tag=run_tag,
+            )
+            for idx, ds in tasks
+        ]
+    else:
+        results = []
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {
+                ex.submit(
+                    _run_dataset_once,
+                    repo_root=repo_root,
+                    ds=ds,
+                    ds_idx=idx,
+                    tmp_dir=tmp_dir,
+                    index_cache_dir=index_cache_dir,
+                    policy_variant=policy_variant,
+                    policy_strict=policy_strict,
+                    reuse_index=reuse_index,
+                    run_tag=run_tag,
+                ): idx
+                for idx, ds in tasks
+            }
+            for fu in as_completed(futures):
+                results.append(fu.result())
 
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF file not found for dataset '{ds_id}': {pdf_path}")
-        if not questions_path.exists():
-            raise FileNotFoundError(f"Questions file not found for dataset '{ds_id}': {questions_path}")
+    results.sort(key=lambda x: x[0])
 
-        one_out = tmp_dir / f"{run_tag}.{ds_id}.json"
-
-        pdf_hash_short = sha256_file(pdf_path)[:12]
-        index_dir = index_cache_dir / f"{ds_id}-{pdf_hash_short}"
-
-        report = run_one(
-            repo_root,
-            str(pdf_path),
-            str(questions_path),
-            one_out,
-            policy_variant=policy_variant,
-            policy_strict=policy_strict,
-            index_dir=index_dir,
-            reuse_index=reuse_index,
-        )
-        score = float(report["summary"]["weighted_score"])
-        q_count = int(report["summary"].get("questions", 0) or 0)
-
+    for _idx, row, w, score, q_count in results:
         total_weight += w
         weighted_score += score * w
-
         total_questions += q_count
         question_weighted_score += score * q_count
-
-        rows.append(
-            {
-                "id": ds_id,
-                "kind": ds.get("kind", "unknown"),
-                "weight": w,
-                "pdf": ds["pdf"],
-                "questions": ds["questions"],
-                "pdf_sha256": sha256_file(pdf_path),
-                "questions_sha256": sha256_file(questions_path),
-                "questions_count": q_count,
-                "weighted_score": score,
-                "run": str(one_out.relative_to(repo_root)),
-                "index_dir": str(index_dir.relative_to(repo_root)),
-            }
-        )
+        rows.append(row)
 
     return {
         "datasets": rows,
@@ -151,10 +207,13 @@ def main() -> None:
     ap.add_argument("--policy-variant", default="control")
     ap.add_argument("--policy-strict", action="store_true")
     ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--max-workers", type=int, default=2)
     args = ap.parse_args()
 
     if args.runs < 1:
         raise ValueError("--runs must be >= 1")
+    if args.max_workers < 1:
+        raise ValueError("--max-workers must be >= 1")
 
     repo_root = Path(__file__).resolve().parents[2]
     config_path = (repo_root / args.config).resolve()
@@ -179,6 +238,7 @@ def main() -> None:
             policy_strict=bool(args.policy_strict),
             reuse_index=not bool(args.no_reuse_index),
             run_tag=tag,
+            max_workers=args.max_workers,
         )
         run_file = out_path if args.runs == 1 else out_path.with_name(f"{out_path.stem}.run{i}{out_path.suffix}")
 
@@ -190,6 +250,7 @@ def main() -> None:
                 "policy_strict": bool(args.policy_strict),
                 "index_cache_dir": str(index_cache_dir.relative_to(repo_root)),
                 "reuse_index": not bool(args.no_reuse_index),
+                "max_workers": args.max_workers,
                 "run": i,
                 **rep["summary"],
             },
@@ -215,6 +276,7 @@ def main() -> None:
                 "policy_strict": bool(args.policy_strict),
                 "index_cache_dir": str(index_cache_dir.relative_to(repo_root)),
                 "reuse_index": not bool(args.no_reuse_index),
+                "max_workers": args.max_workers,
                 "runs": args.runs,
                 "weighted_score": statistics.mean(ws),
                 "question_weighted_score": statistics.mean(qws),

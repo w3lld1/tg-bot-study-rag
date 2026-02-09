@@ -17,4 +17,5 @@ def test_run_benchmark_has_index_cache_flags():
     assert "--index-cache-dir" in RUN_BENCH
     assert "--no-reuse-index" in RUN_BENCH
     assert "--runs" in RUN_BENCH
+    assert "--max-workers" in RUN_BENCH
     assert "index_dir = index_cache_dir" in RUN_BENCH
