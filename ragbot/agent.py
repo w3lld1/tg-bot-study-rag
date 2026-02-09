@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,6 +34,12 @@ from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, n
 
 
 logger = logging.getLogger("tg-rag-bot")
+
+_CITATION_RE = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
+
+
+def _has_citation(answer: str) -> bool:
+    return bool(_CITATION_RE.search(answer or ""))
 
 
 class BestStableRAGAgent:
@@ -106,7 +113,7 @@ class BestStableRAGAgent:
 
         cov = coverage_score(query, docs, intent)
 
-        if multiquery_enabled and (force_multiquery or cov < 0.40):
+        if multiquery_enabled and (force_multiquery or cov < 0.50):
             fallback = {"queries": []}
             mq = invoke_json_robust(
                 self.multiquery_chain_json,
@@ -191,10 +198,12 @@ class BestStableRAGAgent:
         if intent in {"numbers_and_dates", "compare"} and answer_numbers_not_in_context(answer, context):
             needs_retry = True
 
+        citation_missing = (not is_not_found_answer(answer)) and (not _has_citation(answer))
+
         if (
             self.settings.second_pass_enabled
-            and (needs_retry or is_not_found_answer(answer))
-            and intent in {"numbers_and_dates", "citation_only", "summary", "compare"}
+            and (needs_retry or is_not_found_answer(answer) or citation_missing)
+            and intent in {"numbers_and_dates", "citation_only", "summary", "compare", "default", "definition", "procedure", "requirements"}
         ):
             mult = int(self.settings.second_pass_k_multiplier)
             overrides = {
@@ -230,6 +239,12 @@ class BestStableRAGAgent:
                 else:
                     if not is_not_found_answer(answer2):
                         answer = answer2
+
+        # Final citation repair pass (universal): if answer has no page refs, append citation-only evidence.
+        if context and (not is_not_found_answer(answer)) and (not _has_citation(answer)):
+            citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
+            if citations and (not is_not_found_answer(citations)) and _has_citation(citations):
+                answer = (answer or "").strip() + "\n\nДоказательства:\n" + citations.strip()
 
         dt = time.time() - t0
         debug = f"[agent={self.agent_version}] [intent={intent}, conf={conf:.2f}] time={dt:.2f}s query='{query}'"
