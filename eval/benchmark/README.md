@@ -38,6 +38,8 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
 
 ## CI quality gate (PR)
 
+> ⚠️ Временно: CI fresh-run gate отключён в workflow `ci.yml` (job `benchmark-gate` убран на время). Логика gate в скриптах сохранена для локального/будущего повторного включения.
+
 В `benchmark-gate` в CI теперь используется **fresh-run lightweight gate**:
 
 1. Запускается свежий benchmark:
