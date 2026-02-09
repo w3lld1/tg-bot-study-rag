@@ -29,8 +29,8 @@ class EvalSettings:
     rerank_enabled: bool = True
     rerank_pool: int = 18
     rerank_keep: int = 10
-    final_docs_limit: int = 10
-    max_context_chars: int = 16000
+    final_docs_limit: int = 14
+    max_context_chars: int = 22000
     diversify_max_per_group: int = 3
     llm_intent_threshold: float = 0.78
     temperature: float = 0.2

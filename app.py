@@ -106,8 +106,8 @@ class Settings:
     rerank_keep: int = 10
 
     # context
-    final_docs_limit: int = 10
-    max_context_chars: int = 16000
+    final_docs_limit: int = 14
+    max_context_chars: int = 22000
     diversify_max_per_group: int = 3
 
     # intent

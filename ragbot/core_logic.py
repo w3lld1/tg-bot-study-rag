@@ -231,3 +231,42 @@ def answer_numbers_not_in_context(answer: str, context: str) -> bool:
         if n not in ctx_norm:
             misses += 1
     return checks >= 2 and (misses / max(1, checks)) >= 0.5
+
+
+def build_extractive_evidence(question: str, context: str, max_items: int = 6) -> str:
+    if not context:
+        return ""
+    q_toks = coverage_tokens(question)
+    blocks = [b.strip() for b in (context or "").split("\n\n") if b.strip()]
+    cand = []
+    for b in blocks:
+        m = re.match(r"^\[стр\.\s*([^\]]+)\]\s*(.*)$", b, flags=re.IGNORECASE | re.DOTALL)
+        page = m.group(1).strip() if m else "?"
+        text = (m.group(2) if m else b).strip()
+        parts = re.split(r"(?<=[\.!?])\s+", text)
+        for s in parts:
+            s = s.strip().strip('"')
+            if len(s) < 40:
+                continue
+            hit = word_hit_ratio(q_toks, s)
+            numeric = 0.15 if has_number(s) else 0.0
+            score = hit + numeric
+            if score <= 0.05:
+                continue
+            cand.append((score, page, s))
+
+    if not cand:
+        return ""
+    cand.sort(key=lambda x: x[0], reverse=True)
+    out = []
+    seen = set()
+    for _, page, s in cand:
+        key = re.sub(r"\W+", "", s.lower())[:120]
+        if key in seen:
+            continue
+        seen.add(key)
+        clip = clamp_text(s, 220)
+        out.append(f"- (стр. {page}) \"{clip}\"")
+        if len(out) >= max_items:
+            break
+    return "\n".join(out)
