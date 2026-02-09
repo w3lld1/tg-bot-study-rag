@@ -27,7 +27,6 @@ def run_one(repo_root: Path, pdf: str, questions: str, out: Path) -> dict[str, A
         "--out",
         str(out),
     ]
-    env = dict(**{k: v for k, v in dict().items()})
     p = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"run_eval failed for {pdf}:\n{p.stderr or p.stdout}")
@@ -53,19 +52,34 @@ def main() -> None:
     rows: list[dict[str, Any]] = []
     total_weight = 0.0
     weighted_score = 0.0
+    total_questions = 0
+    question_weighted_score = 0.0
 
-    for ds in datasets:
+    for idx, ds in enumerate(datasets, start=1):
+        if "id" not in ds or "pdf" not in ds or "questions" not in ds:
+            raise ValueError(f"Dataset #{idx} in config is missing one of required keys: id, pdf, questions")
+
         ds_id = ds["id"]
         w = float(ds.get("weight", 1.0))
-        pdf = str((repo_root / ds["pdf"]).resolve())
-        questions = str((repo_root / ds["questions"]).resolve())
+        pdf_path = (repo_root / ds["pdf"]).resolve()
+        questions_path = (repo_root / ds["questions"]).resolve()
+
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found for dataset '{ds_id}': {pdf_path}")
+        if not questions_path.exists():
+            raise FileNotFoundError(f"Questions file not found for dataset '{ds_id}': {questions_path}")
+
         one_out = tmp_dir / f"{ds_id}.json"
 
-        report = run_one(repo_root, pdf, questions, one_out)
+        report = run_one(repo_root, str(pdf_path), str(questions_path), one_out)
         score = float(report["summary"]["weighted_score"])
+        q_count = int(report["summary"].get("questions", 0) or 0)
 
         total_weight += w
         weighted_score += score * w
+
+        total_questions += q_count
+        question_weighted_score += score * q_count
 
         rows.append(
             {
@@ -74,9 +88,9 @@ def main() -> None:
                 "weight": w,
                 "pdf": ds["pdf"],
                 "questions": ds["questions"],
-                "pdf_sha256": sha256_file(Path(pdf)),
-                "questions_sha256": sha256_file(Path(questions)),
-                "questions_count": report["summary"].get("questions", 0),
+                "pdf_sha256": sha256_file(pdf_path),
+                "questions_sha256": sha256_file(questions_path),
+                "questions_count": q_count,
                 "weighted_score": score,
                 "run": str(one_out.relative_to(repo_root)),
             }
@@ -87,6 +101,8 @@ def main() -> None:
             "benchmark": cfg.get("name", "benchmark"),
             "datasets": len(rows),
             "weighted_score": (weighted_score / total_weight) if total_weight else 0.0,
+            "question_weighted_score": (question_weighted_score / total_questions) if total_questions else 0.0,
+            "total_questions": total_questions,
         },
         "datasets": rows,
     }

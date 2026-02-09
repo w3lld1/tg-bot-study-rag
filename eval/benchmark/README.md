@@ -22,7 +22,8 @@ PYTHONPATH=. python eval/benchmark/run_benchmark.py \
 
 Выходной файл содержит:
 - summary по каждому документу
-- агрегированный weighted score по benchmark
+- агрегированный `weighted_score` (по весам датасетов)
+- агрегированный `question_weighted_score` (по количеству вопросов)
 - хэши PDF и question-set'ов для валидации сравнения
 
 ## Принцип
