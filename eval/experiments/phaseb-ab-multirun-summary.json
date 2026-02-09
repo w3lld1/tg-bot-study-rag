@@ -1,0 +1,36 @@
+{
+  "label": "phaseb-ab",
+  "n": 3,
+  "weighted_score": {
+    "mean": 0.7348412754524888,
+    "std": 0.020091499029337215,
+    "min": 0.7067207644275659,
+    "max": 0.7524271719905912
+  },
+  "question_weighted_score": {
+    "mean": 0.7052815976150076,
+    "std": 0.01433256983250387,
+    "min": 0.6859540348591361,
+    "max": 0.7202338405314048
+  },
+  "runs": [
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-ab-run1.json",
+      "weighted_score": 0.7067207644275659,
+      "question_weighted_score": 0.6859540348591361,
+      "policy_variant": "ab_retrieval_v1"
+    },
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-ab-run2.json",
+      "weighted_score": 0.7453758899393091,
+      "question_weighted_score": 0.7096569174544819,
+      "policy_variant": "ab_retrieval_v1"
+    },
+    {
+      "path": "eval/runs/benchmark-v1-phaseb-ab-run3.json",
+      "weighted_score": 0.7524271719905912,
+      "question_weighted_score": 0.7202338405314048,
+      "policy_variant": "ab_retrieval_v1"
+    }
+  ]
+}

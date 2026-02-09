@@ -136,6 +136,10 @@ class Settings:
     second_pass_multiquery_n: int = 6
     second_pass_k_multiplier: int = 5
 
+    # Phase B policy table / A-B toggles
+    policy_variant: str = "control"  # control | ab_retrieval_v1
+    policy_strict: bool = False
+
 
 
 
@@ -146,7 +150,9 @@ GIGACHAT_API_KEY = must_get_secret("GIGACHAT_API_KEY")
 os.environ["GIGACHAT_API_KEY"] = GIGACHAT_API_KEY
 
 DATA_DIR = os.getenv("DATA_DIR", "./data")
-SETTINGS = Settings(data_dir=DATA_DIR)
+POLICY_VARIANT = os.getenv("POLICY_VARIANT", "control")
+POLICY_STRICT = os.getenv("POLICY_STRICT", "0").strip().lower() in {"1", "true", "yes", "on"}
+SETTINGS = Settings(data_dir=DATA_DIR, policy_variant=POLICY_VARIANT, policy_strict=POLICY_STRICT)
 
 
 async def main():
