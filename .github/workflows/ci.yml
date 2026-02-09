@@ -34,3 +34,26 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  benchmark-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Multi-run quality gate (lightweight)
+        run: |
+          python eval/benchmark/gate_summary.py \
+            --summary eval/experiments/phaseb-ab-multirun-summary.json \
+            --baseline eval/experiments/phaseb-control-multirun-summary.json \
+            --max-regressions 1 \
+            --max-std-weighted 0.021 \
+            --max-std-question 0.02 \
+            --max-drop-vs-baseline 0.03 \
+            --min-delta -0.01
