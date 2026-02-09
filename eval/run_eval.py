@@ -192,6 +192,7 @@ def main() -> None:
                     "weight": w,
                     "debug": debug,
                     "answer": answer,
+                    "trace": agent.get_last_trace() if hasattr(agent, "get_last_trace") else {},
                     "metrics": m,
                 }
             )
