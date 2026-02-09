@@ -52,7 +52,11 @@ def test_score_answer_with_or_groups_and_citation_penalty():
     assert out1["citation_ok"] is False
     assert out1["citation_penalty"] == 0.2
 
-    # include hit + ссылка => без штрафа
+    # include hit + ссылка в скобках => без штрафа
     out2 = fn("Чистая прибыль 270,5 и снижение 78,3% (стр. 62)", q)
     assert out2["citation_ok"] is True
     assert out2["score"] > out1["score"]
+
+    # include hit + ссылка без скобок => тоже без штрафа
+    out3 = fn("Чистая прибыль 270,5 и снижение 78,3%; стр. 62", q)
+    assert out3["citation_ok"] is True

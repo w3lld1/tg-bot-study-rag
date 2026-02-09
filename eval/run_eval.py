@@ -47,7 +47,7 @@ class EvalSettings:
     second_pass_k_multiplier: int = 5
 
 
-CITATION_PAT = re.compile(r"\(\s*стр\.?\s*\d+", re.IGNORECASE)
+CITATION_PAT = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
 
 
 def sha256_file(path: Path) -> str:
