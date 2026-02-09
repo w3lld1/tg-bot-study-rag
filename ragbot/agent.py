@@ -24,6 +24,7 @@ from ragbot.core_logic import (
     add_neighbors_from_parent_map,
     answer_numbers_not_in_context,
     build_extractive_evidence,
+    build_extractive_plan,
     coverage_score,
     format_context,
     invoke_json_robust,
@@ -237,18 +238,19 @@ class BestStableRAGAgent:
         query = normalize_query(intent_obj.get("query", user_question)) or user_question
         return {"intent": intent, "confidence": conf, "query": query}
 
-    def _answer_stage(self, intent: str, user_question: str, context: str, fallback_answer: str = "") -> str:
+    def _answer_stage(self, intent: str, user_question: str, context: str, plan: Optional[Dict[str, Any]] = None, fallback_answer: str = "") -> str:
+        synthesis_context = (plan or {}).get("synthesis_context", context)
         if intent == "summary":
-            return self.answer_chain_summary.invoke({"question": user_question, "context": context})
+            return self.answer_chain_summary.invoke({"question": user_question, "context": synthesis_context})
         if intent == "compare":
-            return self.answer_chain_compare.invoke({"question": user_question, "context": context})
+            return self.answer_chain_compare.invoke({"question": user_question, "context": synthesis_context})
         if intent == "citation_only":
             return self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
         if intent == "numbers_and_dates":
-            return self.answer_chain_numbers.invoke({"question": user_question, "context": context})
+            return self.answer_chain_numbers.invoke({"question": user_question, "context": synthesis_context})
         if fallback_answer:
             return fallback_answer
-        return self.answer_chain_default.invoke({"question": user_question, "context": context})
+        return self.answer_chain_default.invoke({"question": user_question, "context": synthesis_context})
 
     def _validation_stage(self, intent: str, answer: str, context: str) -> Dict[str, Any]:
         has_fake_pages = contains_fake_pages(answer)
@@ -313,12 +315,19 @@ class BestStableRAGAgent:
             "final_docs_limit": int(self.settings.final_docs_limit),
         }
 
-        answer = self._answer_stage(intent, user_question, context)
+        plan = build_extractive_plan(user_question, context, intent, max_items=8)
+        trace["planner_stage"] = {
+            "evidence_items": len(plan.get("evidence", [])),
+            "lexical_report": plan.get("lexical_report", {}),
+        }
+
+        answer = self._answer_stage(intent, user_question, context, plan=plan)
         validation = self._validation_stage(intent, answer, context)
         trace["answer_stage"] = {
             "intent": intent,
             "chain": intent if intent in {"summary", "compare", "citation_only", "numbers_and_dates"} else "default",
             "answer_chars": len(answer or ""),
+            "planner_used": True,
             **validation,
         }
 
@@ -327,7 +336,8 @@ class BestStableRAGAgent:
             overrides = self._second_pass_overrides(intent)
             docs2, retrieval_trace2 = self._retrieve_with_trace(query, intent, overrides=overrides)
             context2 = format_context(docs2, limit=self.settings.final_docs_limit, max_chars=self.settings.max_context_chars)
-            answer2 = self._answer_stage(intent, user_question, context2, fallback_answer=answer)
+            plan2 = build_extractive_plan(user_question, context2, intent, max_items=8)
+            answer2 = self._answer_stage(intent, user_question, context2, plan=plan2, fallback_answer=answer)
 
             accepted = False
             if answer2 and not contains_fake_pages(answer2):

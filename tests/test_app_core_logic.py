@@ -6,6 +6,7 @@ from ragbot.core_logic import (
     _extract_first_json_object,
     add_neighbors_from_parent_map,
     answer_numbers_not_in_context,
+    build_extractive_plan,
     coverage_score,
     detect_intent_fast,
     format_context,
@@ -127,3 +128,24 @@ def test_answer_numbers_not_in_context():
     assert answer_numbers_not_in_context("Выручка 12500, рост 7.5%", context) is False
     # 2 из 2 чисел отсутствуют в контексте => True
     assert answer_numbers_not_in_context("Выручка 99999, рост 99%", context) is True
+
+
+def test_build_extractive_plan_collects_quotes_and_lexical_coverage():
+    context = (
+        "[стр. 5] Выручка компании за 2026 год составила 12500 млн руб. Рост к прошлому году — 7.5%."
+        "\n\n[стр. 6] EBITDA достигла 2100 млн руб, маржа 16.8%."
+    )
+    plan = build_extractive_plan("Какая выручка и рост в 2026?", context, intent="numbers_and_dates", max_items=4)
+    assert len(plan["evidence"]) >= 1
+    assert "стр. 5" in plan["evidence_text"]
+    assert "выручка" in plan["lexical_report"]["covered_tokens"]
+    assert "2026" in plan["lexical_report"]["covered_numbers"]
+
+
+def test_build_extractive_plan_synthesis_context_contains_layers():
+    context = "[стр. 2] Требуется оформить заявку в течение 3 дней."
+    plan = build_extractive_plan("Какие требования и сроки?", context, intent="requirements", max_items=3)
+    synth = plan["synthesis_context"]
+    assert "EXTRACTIVE-PLAN" in synth
+    assert "LEXICAL-CONSTRAINTS" in synth
+    assert "SYNTHESIS-RULES" in synth
