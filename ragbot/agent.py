@@ -23,6 +23,7 @@ from ragbot.chains import (
 from ragbot.core_logic import (
     add_neighbors_from_parent_map,
     answer_numbers_not_in_context,
+    build_extractive_evidence,
     coverage_score,
     format_context,
     invoke_json_robust,
@@ -278,6 +279,15 @@ class BestStableRAGAgent:
             citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
             if citations and (not is_not_found_answer(citations)) and _has_citation(citations):
                 return (answer or "").strip() + "\n\nДоказательства:\n" + citations.strip()
+
+        extractive = build_extractive_evidence(user_question, context, max_items=5)
+        if extractive:
+            if is_not_found_answer(answer):
+                return "Найденные релевантные фрагменты:\n" + extractive
+            body = (answer or "").strip()
+            if "Фрагменты из документа:" not in body and "Ключевые цитаты:" not in body:
+                tail_title = "Фрагменты из документа:" if not _has_citation(body) else "Ключевые цитаты:"
+                return body + f"\n\n{tail_title}\n" + extractive
         return answer
 
     def ask(self, user_question: str) -> str:
