@@ -38,7 +38,7 @@ class EvalSettings:
     model: str = "GigaChat-2-Max"
     embeddings_model: str = "GigaEmbeddings-3B-2025-09"
     query_embedding_cache_size: int = 512
-    allow_dangerous_faiss_deserialization: bool = False
+    allow_dangerous_faiss_deserialization: bool = True
     allow_index_settings_mismatch: bool = False
     numbers_k_multiplier: int = 3
     numbers_neighbors_window: int = 2
@@ -188,9 +188,11 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     questions = load_questions(questions_path)
+    allow_dangerous = os.getenv("ALLOW_DANGEROUS_FAISS_DESERIALIZATION", "1").strip().lower() in {"1", "true", "yes", "on"}
     settings = EvalSettings(
         policy_variant=str(args.policy_variant or "control").strip().lower(),
         policy_strict=bool(args.policy_strict),
+        allow_dangerous_faiss_deserialization=allow_dangerous,
     )
 
     rows = []
