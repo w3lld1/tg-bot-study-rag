@@ -346,6 +346,13 @@ def _build_hierarchical_context(
         joined = " ".join([clamp_text(s, 260) for _, s in sents])
         packed_blocks.append(f"[стр. {page}] {joined}".strip())
 
+    fallback_used = False
+    if not packed_blocks and blocks:
+        fallback_used = True
+        for page, text in blocks[: max(1, max_sections)]:
+            selected_pages.append(page)
+            packed_blocks.append(f"[стр. {page}] {clamp_text(text, 420)}")
+
     packed_context = "\n\n".join(packed_blocks)
     report = {
         "selected_pages": selected_pages,
@@ -353,6 +360,7 @@ def _build_hierarchical_context(
         "sections_selected": len(chosen),
         "max_sections": int(max_sections),
         "max_sentences_per_section": int(max_sentences_per_section),
+        "fallback_used": fallback_used,
     }
     return packed_context, report
 

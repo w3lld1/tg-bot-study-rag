@@ -170,6 +170,20 @@ def test_build_extractive_plan_builds_hierarchical_context_report():
     assert "стр. 9" in hctx["context"]
 
 
+def test_build_extractive_plan_hierarchical_context_fallback_to_raw_blocks():
+    context = "[стр. 3] Кратко.\n\n[стр. 4] Ещё текст."
+    plan = build_extractive_plan(
+        "Что известно?",
+        context,
+        intent="default",
+        hierarchical_max_sections=1,
+        hierarchical_max_sentences_per_section=1,
+    )
+    hctx = plan["hierarchical_context"]
+    assert hctx["report"]["fallback_used"] is True
+    assert "стр. 3" in hctx["context"] or "стр. 4" in hctx["context"]
+
+
 def test_build_extractive_plan_filters_noisy_context_with_threshold():
     context = (
         "[стр. 1] Купить крипту сейчас! Лучшие условия и акции каждый день."

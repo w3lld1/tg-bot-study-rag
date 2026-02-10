@@ -47,3 +47,7 @@
 - max-workers=2
 - reuse index (default)
 - baseline: `eval/runs/benchmark-v1-baseline-after-phasec-runs3.json`
+
+## Current benchmark status
+- В этой итерации получены 2 строгих run (run1/run2), оба с одинаковым score.
+- Полный runs=3 требует отдельного дожима стабильности запуска (инфра/процессный хвост), отмечено как риск в PR.
