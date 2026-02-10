@@ -113,6 +113,8 @@ class Settings:
     # planner guardrails
     planner_min_score_threshold: float = 0.12
     planner_max_per_page: int = 2
+    planner_hierarchical_max_sections: int = 6
+    planner_hierarchical_max_sentences_per_section: int = 3
 
     # intent
     llm_intent_threshold: float = 0.78
@@ -156,7 +158,13 @@ os.environ["GIGACHAT_API_KEY"] = GIGACHAT_API_KEY
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 POLICY_VARIANT = os.getenv("POLICY_VARIANT", "control")
 POLICY_STRICT = os.getenv("POLICY_STRICT", "0").strip().lower() in {"1", "true", "yes", "on"}
-SETTINGS = Settings(data_dir=DATA_DIR, policy_variant=POLICY_VARIANT, policy_strict=POLICY_STRICT)
+ALLOW_DANGEROUS_FAISS_DESERIALIZATION = os.getenv("ALLOW_DANGEROUS_FAISS_DESERIALIZATION", "0").strip().lower() in {"1", "true", "yes", "on"}
+SETTINGS = Settings(
+    data_dir=DATA_DIR,
+    policy_variant=POLICY_VARIANT,
+    policy_strict=POLICY_STRICT,
+    allow_dangerous_faiss_deserialization=ALLOW_DANGEROUS_FAISS_DESERIALIZATION,
+)
 
 
 async def main():

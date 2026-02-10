@@ -292,6 +292,71 @@ def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
     }
 
 
+def _intent_phrase_bonus(intent: str, sentence: str) -> float:
+    if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", sentence, flags=re.IGNORECASE):
+        return 0.12
+    if intent == "procedure" and re.search(r"шаг|этап|сначала|далее|затем", sentence, flags=re.IGNORECASE):
+        return 0.12
+    if intent == "compare" and re.search(r"в отличие|по сравнению|против|больше|меньше", sentence, flags=re.IGNORECASE):
+        return 0.08
+    return 0.0
+
+
+def _score_sentence(question_tokens: List[str], sentence: str, intent: str) -> float:
+    hit = word_hit_ratio(question_tokens, sentence)
+    numeric = 0.16 if has_number(sentence) else 0.0
+    date_bonus = 0.08 if DATE_RE.search(sentence) else 0.0
+    intent_bonus = _intent_phrase_bonus(intent, sentence)
+    return hit + numeric + date_bonus + intent_bonus
+
+
+def _build_hierarchical_context(
+    question: str,
+    context: str,
+    intent: str,
+    max_sections: int,
+    max_sentences_per_section: int,
+) -> Tuple[str, Dict[str, Any]]:
+    blocks = _context_blocks(context)
+    q_toks = coverage_tokens(question)
+    section_scored: List[Tuple[float, str, List[Tuple[float, str]]]] = []
+
+    for page, text in blocks:
+        parts = [p.strip().strip('"') for p in re.split(r"(?<=[\.!?])\s+", text) if p.strip()]
+        scored_parts: List[Tuple[float, str]] = []
+        for s in parts:
+            if len(s) < 30:
+                continue
+            scored_parts.append((_score_sentence(q_toks, s, intent), s))
+
+        if not scored_parts:
+            continue
+        scored_parts.sort(key=lambda x: x[0], reverse=True)
+        top = scored_parts[: max(1, max_sentences_per_section)]
+        section_score = sum(x[0] for x in top) / len(top)
+        section_scored.append((section_score, page, top))
+
+    section_scored.sort(key=lambda x: x[0], reverse=True)
+    chosen = section_scored[: max(1, max_sections)]
+
+    packed_blocks = []
+    selected_pages = []
+    for _, page, sents in chosen:
+        selected_pages.append(page)
+        joined = " ".join([clamp_text(s, 260) for _, s in sents])
+        packed_blocks.append(f"[стр. {page}] {joined}".strip())
+
+    packed_context = "\n\n".join(packed_blocks)
+    report = {
+        "selected_pages": selected_pages,
+        "sections_total": len(section_scored),
+        "sections_selected": len(chosen),
+        "max_sections": int(max_sections),
+        "max_sentences_per_section": int(max_sentences_per_section),
+    }
+    return packed_context, report
+
+
 def build_extractive_plan(
     question: str,
     context: str,
@@ -299,6 +364,8 @@ def build_extractive_plan(
     max_items: int = 8,
     min_score_threshold: float = 0.12,
     max_per_page: int = 2,
+    hierarchical_max_sections: int = 6,
+    hierarchical_max_sentences_per_section: int = 3,
 ) -> Dict[str, Any]:
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
@@ -311,12 +378,7 @@ def build_extractive_plan(
             s = sent.strip().strip('"')
             if len(s) < 30:
                 continue
-            hit = word_hit_ratio(q_toks, s)
-            numeric = 0.15 if has_number(s) else 0.0
-            date_bonus = 0.1 if DATE_RE.search(s) else 0.0
-            req_bonus = 0.1 if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", s, flags=re.IGNORECASE) else 0.0
-            proc_bonus = 0.1 if intent == "procedure" and re.search(r"шаг|этап|сначала|далее|затем", s, flags=re.IGNORECASE) else 0.0
-            score = hit + numeric + date_bonus + req_bonus + proc_bonus
+            score = _score_sentence(q_toks, s, intent)
             if score < float(min_score_threshold):
                 continue
             candidates.append((score, page, s))
@@ -355,6 +417,14 @@ def build_extractive_plan(
         "missing_numbers": missing_numbers,
     }
 
+    packed_context, hierarchy_report = _build_hierarchical_context(
+        question,
+        context,
+        intent,
+        max_sections=int(hierarchical_max_sections),
+        max_sentences_per_section=int(hierarchical_max_sentences_per_section),
+    )
+
     synthesis_context = (
         "EXTRACTIVE-PLAN (используй как первичную опору):\n"
         + (evidence_text or "- нет уверенных извлечений")
@@ -363,10 +433,13 @@ def build_extractive_plan(
         + f"- числа/даты из вопроса: {', '.join(constraints['numbers']) or 'нет'}\n"
         + f"- непокрытые термины: {', '.join(missing_tokens) or 'нет'}\n"
         + f"- непокрытые числа: {', '.join(missing_numbers) or 'нет'}\n\n"
-        + "SYNTHESIS-RULES:\n"
+        + "HIERARCHICAL-CONTEXT:\n"
+        + (packed_context or "- не удалось собрать сокращенный контекст")
+        + "\n\nSYNTHESIS-RULES:\n"
         + "1) Сначала опирайся на EXTRACTIVE-PLAN, не придумывай новые факты.\n"
         + "2) Если элемент из constraints не найден в extractive-фрагментах, явно пометь как не найдено.\n"
-        + "3) Добавляй ссылки на страницы только из extractive-фрагментов или исходного контекста.\n\n"
+        + "3) При конфликте между HIERARCHICAL-CONTEXT и RAW-CONTEXT приоритет у EXTRACTIVE-PLAN.\n"
+        + "4) Добавляй ссылки на страницы только из extractive-фрагментов или исходного контекста.\n\n"
         + "RAW-CONTEXT:\n"
         + context
     )
@@ -379,6 +452,10 @@ def build_extractive_plan(
             "min_score_threshold": float(min_score_threshold),
             "max_per_page": int(max_per_page),
             "per_page_count": per_page_count,
+        },
+        "hierarchical_context": {
+            "context": packed_context,
+            "report": hierarchy_report,
         },
         "synthesis_context": synthesis_context,
     }

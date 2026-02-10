@@ -322,11 +322,14 @@ class BestStableRAGAgent:
             max_items=8,
             min_score_threshold=float(getattr(self.settings, "planner_min_score_threshold", 0.12)),
             max_per_page=int(getattr(self.settings, "planner_max_per_page", 2)),
+            hierarchical_max_sections=int(getattr(self.settings, "planner_hierarchical_max_sections", 6)),
+            hierarchical_max_sentences_per_section=int(getattr(self.settings, "planner_hierarchical_max_sentences_per_section", 3)),
         )
         trace["planner_stage"] = {
             "evidence_items": len(plan.get("evidence", [])),
             "lexical_report": plan.get("lexical_report", {}),
             "guardrails": plan.get("guardrails", {}),
+            "hierarchical_report": (plan.get("hierarchical_context", {}) or {}).get("report", {}),
         }
 
         answer = self._answer_stage(intent, user_question, context, plan=plan)
@@ -351,6 +354,8 @@ class BestStableRAGAgent:
                 max_items=8,
                 min_score_threshold=float(getattr(self.settings, "planner_min_score_threshold", 0.12)),
                 max_per_page=int(getattr(self.settings, "planner_max_per_page", 2)),
+                hierarchical_max_sections=int(getattr(self.settings, "planner_hierarchical_max_sections", 6)),
+                hierarchical_max_sentences_per_section=int(getattr(self.settings, "planner_hierarchical_max_sentences_per_section", 3)),
             )
             answer2 = self._answer_stage(intent, user_question, context2, plan=plan2, fallback_answer=answer)
 

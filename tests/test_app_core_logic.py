@@ -148,7 +148,26 @@ def test_build_extractive_plan_synthesis_context_contains_layers():
     synth = plan["synthesis_context"]
     assert "EXTRACTIVE-PLAN" in synth
     assert "LEXICAL-CONSTRAINTS" in synth
+    assert "HIERARCHICAL-CONTEXT" in synth
     assert "SYNTHESIS-RULES" in synth
+
+
+def test_build_extractive_plan_builds_hierarchical_context_report():
+    context = (
+        "[стр. 1] Общая справка по компании и вводная информация."
+        "\n\n[стр. 9] Выручка за 2026 год составила 12500 млн руб. Рост 7.5% к 2025 году."
+        "\n\n[стр. 11] Приложение и нерелевантные технические детали."
+    )
+    plan = build_extractive_plan(
+        "Какая выручка и рост в 2026?",
+        context,
+        intent="numbers_and_dates",
+        hierarchical_max_sections=1,
+        hierarchical_max_sentences_per_section=2,
+    )
+    hctx = plan["hierarchical_context"]
+    assert hctx["report"]["sections_selected"] == 1
+    assert "стр. 9" in hctx["context"]
 
 
 def test_build_extractive_plan_filters_noisy_context_with_threshold():
