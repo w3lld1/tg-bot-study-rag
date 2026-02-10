@@ -110,6 +110,10 @@ class Settings:
     max_context_chars: int = 22000
     diversify_max_per_group: int = 3
 
+    # planner guardrails
+    planner_min_score_threshold: float = 0.12
+    planner_max_per_page: int = 2
+
     # intent
     llm_intent_threshold: float = 0.78
 

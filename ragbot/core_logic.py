@@ -270,3 +270,115 @@ def build_extractive_evidence(question: str, context: str, max_items: int = 6) -
         if len(out) >= max_items:
             break
     return "\n".join(out)
+
+
+def _context_blocks(context: str) -> List[Tuple[str, str]]:
+    out: List[Tuple[str, str]] = []
+    for b in [x.strip() for x in (context or "").split("\n\n") if x.strip()]:
+        m = re.match(r"^\[стр\.\s*([^\]]+)\]\s*(.*)$", b, flags=re.IGNORECASE | re.DOTALL)
+        page = (m.group(1).strip() if m else "?")
+        text = (m.group(2) if m else b).strip()
+        if text:
+            out.append((page, text))
+    return out
+
+
+def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
+    tokens = coverage_tokens(question)
+    numbers = extract_numbers_from_text(question)
+    return {
+        "tokens": tokens[:8],
+        "numbers": numbers[:6],
+    }
+
+
+def build_extractive_plan(
+    question: str,
+    context: str,
+    intent: str,
+    max_items: int = 8,
+    min_score_threshold: float = 0.12,
+    max_per_page: int = 2,
+) -> Dict[str, Any]:
+    blocks = _context_blocks(context)
+    q_toks = coverage_tokens(question)
+    constraints = _question_lexical_constraints(question)
+    candidates: List[Tuple[float, str, str]] = []
+
+    for page, text in blocks:
+        parts = re.split(r"(?<=[\.!?])\s+", text)
+        for sent in parts:
+            s = sent.strip().strip('"')
+            if len(s) < 30:
+                continue
+            hit = word_hit_ratio(q_toks, s)
+            numeric = 0.15 if has_number(s) else 0.0
+            date_bonus = 0.1 if DATE_RE.search(s) else 0.0
+            req_bonus = 0.1 if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", s, flags=re.IGNORECASE) else 0.0
+            proc_bonus = 0.1 if intent == "procedure" and re.search(r"шаг|этап|сначала|далее|затем", s, flags=re.IGNORECASE) else 0.0
+            score = hit + numeric + date_bonus + req_bonus + proc_bonus
+            if score < float(min_score_threshold):
+                continue
+            candidates.append((score, page, s))
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    evidence: List[Dict[str, str]] = []
+    seen = set()
+    per_page_count: Dict[str, int] = {}
+    for _, page, s in candidates:
+        key = re.sub(r"\W+", "", s.lower())[:120]
+        if key in seen:
+            continue
+        if per_page_count.get(page, 0) >= max(1, int(max_per_page)):
+            continue
+        seen.add(key)
+        evidence.append({"page": page, "quote": clamp_text(s, 220)})
+        per_page_count[page] = per_page_count.get(page, 0) + 1
+        if len(evidence) >= max_items:
+            break
+
+    evidence_text = "\n".join([f"- (стр. {x['page']}) \"{x['quote']}\"" for x in evidence])
+
+    covered_tokens = [t for t in constraints["tokens"] if evidence_text and re.search(rf"(?<![a-zа-яё0-9]){re.escape(t)}(?![a-zа-яё0-9])", evidence_text, flags=re.IGNORECASE)]
+    missing_tokens = [t for t in constraints["tokens"] if t not in covered_tokens]
+
+    flattened_evidence = re.sub(r"[\s\u00A0\u202F]+", "", evidence_text).replace("−", "-")
+    covered_numbers = [n for n in constraints["numbers"] if n in flattened_evidence]
+    missing_numbers = [n for n in constraints["numbers"] if n not in covered_numbers]
+
+    lexical_report = {
+        "required_tokens": constraints["tokens"],
+        "covered_tokens": covered_tokens,
+        "missing_tokens": missing_tokens,
+        "required_numbers": constraints["numbers"],
+        "covered_numbers": covered_numbers,
+        "missing_numbers": missing_numbers,
+    }
+
+    synthesis_context = (
+        "EXTRACTIVE-PLAN (используй как первичную опору):\n"
+        + (evidence_text or "- нет уверенных извлечений")
+        + "\n\nLEXICAL-CONSTRAINTS:\n"
+        + f"- термины из вопроса: {', '.join(constraints['tokens']) or 'нет'}\n"
+        + f"- числа/даты из вопроса: {', '.join(constraints['numbers']) or 'нет'}\n"
+        + f"- непокрытые термины: {', '.join(missing_tokens) or 'нет'}\n"
+        + f"- непокрытые числа: {', '.join(missing_numbers) or 'нет'}\n\n"
+        + "SYNTHESIS-RULES:\n"
+        + "1) Сначала опирайся на EXTRACTIVE-PLAN, не придумывай новые факты.\n"
+        + "2) Если элемент из constraints не найден в extractive-фрагментах, явно пометь как не найдено.\n"
+        + "3) Добавляй ссылки на страницы только из extractive-фрагментов или исходного контекста.\n\n"
+        + "RAW-CONTEXT:\n"
+        + context
+    )
+
+    return {
+        "evidence": evidence,
+        "evidence_text": evidence_text,
+        "lexical_report": lexical_report,
+        "guardrails": {
+            "min_score_threshold": float(min_score_threshold),
+            "max_per_page": int(max_per_page),
+            "per_page_count": per_page_count,
+        },
+        "synthesis_context": synthesis_context,
+    }
