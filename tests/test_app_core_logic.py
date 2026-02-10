@@ -9,7 +9,9 @@ from ragbot.core_logic import (
     build_extractive_plan,
     coverage_score,
     detect_intent_fast,
+    finalize_numeric_answer,
     format_context,
+    format_structure_answer,
     invoke_json_robust,
     is_not_found_answer,
     rerank_numbers_heuristic,
@@ -66,6 +68,8 @@ def test_invoke_json_robust_falls_back_to_string_chain():
         ("как устроена подсистема", "default"),
         ("как формулируется миссия", "default"),
         ("что такое дефолт", "definition"),
+        ("какие разделы включает часть отчета по рискам", "structure_list"),
+        ("какие комитеты участвуют в системе управления рисками", "structure_list"),
         ("сколько процентов в 2026", "numbers_and_dates"),
         ("просто расскажи", "default"),
     ],
@@ -224,3 +228,49 @@ def test_build_extractive_plan_handles_paraphrase_lexically():
     plan = build_extractive_plan("Сколько составил рост выручки в 2026?", context, intent="numbers_and_dates", max_items=3)
     assert plan["evidence"]
     assert "2026" in plan["lexical_report"]["covered_numbers"]
+
+
+def test_finalize_numeric_answer_returns_normalized_value_with_page_and_quote():
+    context = "[стр. 62] Прибыль от продолжающейся деятельности составила 413,8 млрд рублей в 2022 году."
+    out = finalize_numeric_answer("Какая прибыль от продолжающейся деятельности?", "черновик", context)
+    assert out.startswith("Итог: 413,8 млрд")
+    assert "(стр. 62)" in out
+    assert "Прибыль от продолжающейся деятельности" in out
+
+
+def test_finalize_numeric_answer_picks_percent_when_relevant():
+    context = "[стр. 10] Доля процессов банка с ИИ достигла 75% в отчетном году."
+    out = finalize_numeric_answer("Какая доля процессов с ИИ?", "", context)
+    assert "75 %" in out or "75%" in out
+    assert "(стр. 10)" in out
+
+
+def test_finalize_numeric_answer_returns_not_found_when_no_numeric_evidence():
+    context = "[стр. 3] В разделе описаны подходы и процессы без конкретных показателей."
+    out = finalize_numeric_answer("Сколько обращений?", "", context)
+    assert out == "В документе не найдено."
+
+
+def test_format_structure_answer_returns_committee_list():
+    context = (
+        "[стр. 101 | Система управления рисками] Комитет по рискам рассматривает профиль рисков. "
+        "Комитет по аудиту контролирует внутренний контроль."
+    )
+    out = format_structure_answer("Какие комитеты участвуют в системе управления рисками?", context)
+    assert "Комитет по рискам" in out
+    assert "Комитет по аудиту" in out
+
+
+def test_format_structure_answer_returns_section_list():
+    context = (
+        "[стр. 90 | Система управления рисками] Раздел описывает общие принципы.\n\n"
+        "[стр. 95 | Подходы к управлению рисками] Раздел описывает методы и лимиты."
+    )
+    out = format_structure_answer("Какие разделы включает часть отчета по рискам?", context)
+    assert "Система управления рисками" in out
+    assert "Подходы к управлению рисками" in out
+
+
+def test_format_structure_answer_not_found_on_empty_context():
+    out = format_structure_answer("Какие разделы?", "")
+    assert out == "В документе не найдено."

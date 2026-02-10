@@ -26,7 +26,9 @@ from ragbot.core_logic import (
     build_extractive_evidence,
     build_extractive_plan,
     coverage_score,
+    finalize_numeric_answer,
     format_context,
+    format_structure_answer,
     invoke_json_robust,
     is_not_found_answer,
     rerank_numbers_heuristic,
@@ -248,6 +250,8 @@ class BestStableRAGAgent:
             return self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
         if intent == "numbers_and_dates":
             return self.answer_chain_numbers.invoke({"question": user_question, "context": synthesis_context})
+        if intent == "structure_list":
+            return format_structure_answer(user_question, context)
         if fallback_answer:
             return fallback_answer
         return self.answer_chain_default.invoke({"question": user_question, "context": synthesis_context})
@@ -273,10 +277,10 @@ class BestStableRAGAgent:
         return bool(
             self.settings.second_pass_enabled
             and (validation["needs_retry"] or validation["not_found"] or validation["citation_missing"])
-            and intent in {"numbers_and_dates", "citation_only", "summary", "compare", "default", "definition", "procedure", "requirements"}
+            and intent in {"numbers_and_dates", "citation_only", "summary", "compare", "default", "definition", "procedure", "requirements", "structure_list"}
         )
 
-    def _repair_stage(self, user_question: str, answer: str, context: str) -> str:
+    def _repair_stage(self, user_question: str, answer: str, context: str, intent: str) -> str:
         if context and (not is_not_found_answer(answer)) and (not _has_citation(answer)):
             citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
             if citations and (not is_not_found_answer(citations)) and _has_citation(citations):
@@ -285,6 +289,8 @@ class BestStableRAGAgent:
         extractive = build_extractive_evidence(user_question, context, max_items=5)
         if extractive:
             if is_not_found_answer(answer):
+                if intent in {"numbers_and_dates", "structure_list"}:
+                    return "В документе не найдено."
                 return "Найденные релевантные фрагменты:\n" + extractive
             body = (answer or "").strip()
             if "Фрагменты из документа:" not in body and "Ключевые цитаты:" not in body:
@@ -332,6 +338,7 @@ class BestStableRAGAgent:
             "hierarchical_report": (plan.get("hierarchical_context", {}) or {}).get("report", {}),
         }
 
+        final_context = context
         answer = self._answer_stage(intent, user_question, context, plan=plan)
         validation = self._validation_stage(intent, answer, context)
         trace["answer_stage"] = {
@@ -364,10 +371,12 @@ class BestStableRAGAgent:
                 if intent in {"numbers_and_dates", "compare"}:
                     if not answer_numbers_not_in_context(answer2, context2) and not is_not_found_answer(answer2):
                         answer = answer2
+                        final_context = context2
                         accepted = True
                 else:
                     if not is_not_found_answer(answer2):
                         answer = answer2
+                        final_context = context2
                         accepted = True
 
             trace["second_pass"] = {
@@ -386,8 +395,11 @@ class BestStableRAGAgent:
                 "answer_chars": len(answer2 or ""),
             }
 
+        if intent == "numbers_and_dates":
+            answer = finalize_numeric_answer(user_question, answer, final_context)
+
         answer_before_repair = answer
-        answer = self._repair_stage(user_question, answer, context)
+        answer = self._repair_stage(user_question, answer, final_context, intent)
         trace["repair_stage"] = {
             "citation_repair_applied": answer != answer_before_repair,
             "final_answer_has_citation": _has_citation(answer),
