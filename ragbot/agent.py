@@ -315,10 +315,18 @@ class BestStableRAGAgent:
             "final_docs_limit": int(self.settings.final_docs_limit),
         }
 
-        plan = build_extractive_plan(user_question, context, intent, max_items=8)
+        plan = build_extractive_plan(
+            user_question,
+            context,
+            intent,
+            max_items=8,
+            min_score_threshold=float(getattr(self.settings, "planner_min_score_threshold", 0.12)),
+            max_per_page=int(getattr(self.settings, "planner_max_per_page", 2)),
+        )
         trace["planner_stage"] = {
             "evidence_items": len(plan.get("evidence", [])),
             "lexical_report": plan.get("lexical_report", {}),
+            "guardrails": plan.get("guardrails", {}),
         }
 
         answer = self._answer_stage(intent, user_question, context, plan=plan)
@@ -336,7 +344,14 @@ class BestStableRAGAgent:
             overrides = self._second_pass_overrides(intent)
             docs2, retrieval_trace2 = self._retrieve_with_trace(query, intent, overrides=overrides)
             context2 = format_context(docs2, limit=self.settings.final_docs_limit, max_chars=self.settings.max_context_chars)
-            plan2 = build_extractive_plan(user_question, context2, intent, max_items=8)
+            plan2 = build_extractive_plan(
+                user_question,
+                context2,
+                intent,
+                max_items=8,
+                min_score_threshold=float(getattr(self.settings, "planner_min_score_threshold", 0.12)),
+                max_per_page=int(getattr(self.settings, "planner_max_per_page", 2)),
+            )
             answer2 = self._answer_stage(intent, user_question, context2, plan=plan2, fallback_answer=answer)
 
             accepted = False

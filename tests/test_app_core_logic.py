@@ -149,3 +149,45 @@ def test_build_extractive_plan_synthesis_context_contains_layers():
     assert "EXTRACTIVE-PLAN" in synth
     assert "LEXICAL-CONSTRAINTS" in synth
     assert "SYNTHESIS-RULES" in synth
+
+
+def test_build_extractive_plan_filters_noisy_context_with_threshold():
+    context = (
+        "[стр. 1] Купить крипту сейчас! Лучшие условия и акции каждый день."
+        "\n\n[стр. 7] Выручка за 2026 год составила 12500 млн руб., рост 7.5% к 2025 году."
+        "\n\n[стр. 8] Реклама, скидки, подписки, бонусы без отношения к вопросу."
+    )
+    plan = build_extractive_plan(
+        "Какая выручка и рост в 2026?",
+        context,
+        intent="numbers_and_dates",
+        max_items=4,
+        min_score_threshold=0.2,
+    )
+    assert len(plan["evidence"]) >= 1
+    assert all(item["page"] == "7" for item in plan["evidence"])
+
+
+def test_build_extractive_plan_limits_evidence_per_page_for_diversity():
+    context = (
+        "[стр. 10] Шаг 1: подайте заявление в личном кабинете. Шаг 2: приложите документы. Шаг 3: дождитесь подтверждения."
+        "\n\n[стр. 11] Шаг 4: получите уведомление о результате и сроки исполнения."
+    )
+    plan = build_extractive_plan(
+        "Опиши процедуру подачи заявления",
+        context,
+        intent="procedure",
+        max_items=5,
+        max_per_page=1,
+        min_score_threshold=0.1,
+    )
+    pages = [x["page"] for x in plan["evidence"]]
+    assert pages.count("10") <= 1
+    assert pages.count("11") <= 1
+
+
+def test_build_extractive_plan_handles_paraphrase_lexically():
+    context = "[стр. 4] Компания подняла выручку до 12 500 млн руб. в 2026 году, прибавив 7.5 процента год к году."
+    plan = build_extractive_plan("Сколько составил рост выручки в 2026?", context, intent="numbers_and_dates", max_items=3)
+    assert plan["evidence"]
+    assert "2026" in plan["lexical_report"]["covered_numbers"]

@@ -292,7 +292,14 @@ def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
     }
 
 
-def build_extractive_plan(question: str, context: str, intent: str, max_items: int = 8) -> Dict[str, Any]:
+def build_extractive_plan(
+    question: str,
+    context: str,
+    intent: str,
+    max_items: int = 8,
+    min_score_threshold: float = 0.12,
+    max_per_page: int = 2,
+) -> Dict[str, Any]:
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
     constraints = _question_lexical_constraints(question)
@@ -310,19 +317,23 @@ def build_extractive_plan(question: str, context: str, intent: str, max_items: i
             req_bonus = 0.1 if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", s, flags=re.IGNORECASE) else 0.0
             proc_bonus = 0.1 if intent == "procedure" and re.search(r"шаг|этап|сначала|далее|затем", s, flags=re.IGNORECASE) else 0.0
             score = hit + numeric + date_bonus + req_bonus + proc_bonus
-            if score <= 0.05:
+            if score < float(min_score_threshold):
                 continue
             candidates.append((score, page, s))
 
     candidates.sort(key=lambda x: x[0], reverse=True)
     evidence: List[Dict[str, str]] = []
     seen = set()
+    per_page_count: Dict[str, int] = {}
     for _, page, s in candidates:
         key = re.sub(r"\W+", "", s.lower())[:120]
         if key in seen:
             continue
+        if per_page_count.get(page, 0) >= max(1, int(max_per_page)):
+            continue
         seen.add(key)
         evidence.append({"page": page, "quote": clamp_text(s, 220)})
+        per_page_count[page] = per_page_count.get(page, 0) + 1
         if len(evidence) >= max_items:
             break
 
@@ -364,5 +375,10 @@ def build_extractive_plan(question: str, context: str, intent: str, max_items: i
         "evidence": evidence,
         "evidence_text": evidence_text,
         "lexical_report": lexical_report,
+        "guardrails": {
+            "min_score_threshold": float(min_score_threshold),
+            "max_per_page": int(max_per_page),
+            "per_page_count": per_page_count,
+        },
         "synthesis_context": synthesis_context,
     }
