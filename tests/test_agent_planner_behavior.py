@@ -81,3 +81,25 @@ def test_numeric_terminal_guard_blocks_fragments_fallback():
     assert out["guard_applied"] is True
     assert out["answer"] == "В документе не найдено."
     assert out["reason"] == "fragments_fallback"
+
+
+def test_repair_stage_targeted_mission_repair():
+    agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
+    agent.answer_chain_citation_only = EchoChain()
+
+    context = "[стр. 7] Миссия Мы даем людям уверенность и надежность, мы делаем их жизнь лучше."
+    out = agent._repair_stage("Как сформулирована миссия Сбера?", "В документе не найдено.", context, "default")
+
+    assert "Мы даем людям уверенность" in out
+    assert "стр. 7" in out
+
+
+def test_repair_stage_targeted_risk_sections_repair():
+    agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
+    agent.answer_chain_citation_only = EchoChain()
+
+    context = "[стр. 73-76] ОТЧЕТ ПО РИСКАМ Система управления рисками.\n\n[стр. 77-82] Подход к управлению ключевыми рисками группы."
+    out = agent._repair_stage("Какие ключевые разделы включает часть отчета по рискам?", "В документе не найдено.", context, "default")
+
+    assert "Система управления рисками" in out
+    assert "Подходы к управлению" in out
