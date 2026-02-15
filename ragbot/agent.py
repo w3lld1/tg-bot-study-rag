@@ -48,6 +48,20 @@ def _has_citation(answer: str) -> bool:
     return bool(_CITATION_RE.search(answer or ""))
 
 
+def _numeric_fallback_line_quality(question: str, line: str) -> float:
+    """
+    Эвристика качества строки для numeric fallback: число + лексическое попадание по вопросу.
+    """
+    if not line:
+        return 0.0
+    q_toks = coverage_tokens(question)
+    line_low = line.lower()
+    lexical_hits = sum(1 for t in q_toks if t and t in line_low)
+    lexical_ratio = lexical_hits / max(1, len(q_toks))
+    number_bonus = 0.35 if has_number(line) else 0.0
+    return lexical_ratio + number_bonus
+
+
 class BestStableRAGAgent:
     """
     Основной runtime-класс RAG-агента: управляет retrieval, генерацией ответа, валидацией и fallback-стратегиями.
@@ -342,7 +356,14 @@ class BestStableRAGAgent:
                 if intent == "numbers_and_dates":
                     num_lines = [ln for ln in extractive.splitlines() if has_number(ln)]
                     if num_lines:
-                        return "По релевантным фрагментам:\n" + "\n".join(num_lines[:2])
+                        ranked = sorted(
+                            [(_numeric_fallback_line_quality(user_question, ln), ln) for ln in num_lines],
+                            key=lambda x: x[0],
+                            reverse=True,
+                        )
+                        good = [ln for score, ln in ranked if score >= 0.42]
+                        if good:
+                            return "По релевантным фрагментам:\n" + "\n".join(good[:2])
                     return "В документе не найдено."
                 if intent in {"structure_list"}:
                     return "В документе не найдено."

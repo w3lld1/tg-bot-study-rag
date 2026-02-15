@@ -43,12 +43,32 @@ def test_repair_stage_numbers_prefers_numeric_evidence_when_base_not_found():
     agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
     agent.answer_chain_citation_only = EchoChain()
 
-    context = "[стр. 12] Финансовый эффект от применения AI в 2022 году ..."
-    out = agent._repair_stage("вопрос", "В документе не найдено.", context, "numbers_and_dates")
+    context = "[стр. 12] Финансовый эффект от применения AI в 2022 году составил 235 млрд руб."
+    out = agent._repair_stage(
+        "Какой финансовый эффект от применения AI в 2022 году?",
+        "В документе не найдено.",
+        context,
+        "numbers_and_dates",
+    )
 
     assert out.startswith("По релевантным фрагментам:")
     assert "стр. 12" in out
     assert "2022" in out
+
+
+def test_repair_stage_numbers_drops_noisy_numeric_fallback_when_lexically_missed():
+    agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
+    agent.answer_chain_citation_only = EchoChain()
+
+    context = "[стр. 44] В 2022 году выбросы СО2 составили 59%."
+    out = agent._repair_stage(
+        "Какой финансовый эффект от применения AI в 2022 году?",
+        "В документе не найдено.",
+        context,
+        "numbers_and_dates",
+    )
+
+    assert out == "В документе не найдено."
 
 
 def test_numeric_terminal_guard_blocks_fragments_fallback():
