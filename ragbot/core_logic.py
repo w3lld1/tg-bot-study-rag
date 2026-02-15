@@ -30,6 +30,9 @@ _NOT_FOUND_PAT = re.compile(r"^\s*(в документе не найдено|н�
 
 
 def coverage_score(question: str, docs: List[Any], intent: str) -> float:
+    """
+    Оценивает покрытие вопроса текущим набором документов (общий и numeric-режим).
+    """
     if not docs:
         return 0.0
     toks = coverage_tokens(question)
@@ -42,6 +45,9 @@ def coverage_score(question: str, docs: List[Any], intent: str) -> float:
 
 
 def _extract_first_json_object(s: str) -> Optional[dict]:
+    """
+    Пытается извлечь первый корректный JSON-объект из сырого текстового ответа LLM.
+    """
     if not s:
         return None
     try:
@@ -58,6 +64,9 @@ def _extract_first_json_object(s: str) -> Optional[dict]:
 
 
 def invoke_json_robust(chain_json, chain_str, inputs: dict, fallback: dict, retries: int = 1) -> dict:
+    """
+    Надёжно вызывает JSON-цепочку с fallback на string-цепочку и парсинг JSON.
+    """
     for _ in range(max(1, retries + 1)):
         try:
             out = chain_json.invoke(inputs)
@@ -76,6 +85,9 @@ def invoke_json_robust(chain_json, chain_str, inputs: dict, fallback: dict, retr
 
 
 def detect_intent_fast(user_question: str):
+    """
+    Быстрая эвристическая классификация intent по ключевым маркерам вопроса.
+    """
     q = (user_question or "").lower()
     if any(k in q for k in _CITATION_ONLY_STRONG):
         return "citation_only", 0.90
@@ -122,6 +134,9 @@ def detect_intent_fast(user_question: str):
 
 
 def format_context(docs: List[Any], limit: int, max_chars: int) -> str:
+    """
+    Формирует компактный контекст из документов с метками страниц и ограничением по длине.
+    """
     out = []
     total = 0
     used = 0
@@ -146,6 +161,9 @@ def format_context(docs: List[Any], limit: int, max_chars: int) -> str:
 
 
 def is_not_found_answer(ans: str) -> bool:
+    """
+    Проверяет, является ли ответ "not found"-формулировкой.
+    """
     if not ans:
         return True
     s = ans.strip().lower()
@@ -155,6 +173,9 @@ def is_not_found_answer(ans: str) -> bool:
 
 
 def add_neighbors_from_parent_map(parent_map: dict, docs: List[Any], window: int, max_total: int = 320) -> List[Any]:
+    """
+    Добавляет соседние чанки из той же секции/страниц для повышения полноты доказательств.
+    """
     if not docs or window <= 0:
         return docs
     out = list(docs)
@@ -197,6 +218,9 @@ def add_neighbors_from_parent_map(parent_map: dict, docs: List[Any], window: int
 
 
 def _num_rerank_score(question: str, doc: Any) -> float:
+    """
+    Считает эвристический score для numeric-rerank (лексика + числа + даты).
+    """
     q = (question or "").lower()
     text = (doc.page_content or "").lower()
     toks = coverage_tokens(q)
@@ -208,6 +232,9 @@ def _num_rerank_score(question: str, doc: Any) -> float:
 
 
 def rerank_numbers_heuristic(question: str, docs: List[Any], keep: int) -> List[Any]:
+    """
+    Пересортировывает документы для numeric-вопросов и оставляет top-K.
+    """
     if not docs:
         return docs
     scored = [(_num_rerank_score(question, d), d) for d in docs]
@@ -216,6 +243,9 @@ def rerank_numbers_heuristic(question: str, docs: List[Any], keep: int) -> List[
 
 
 def answer_numbers_not_in_context(answer: str, context: str) -> bool:
+    """
+    Проверяет, что числа в ответе действительно встречаются в контексте.
+    """
     if not answer or not context:
         return False
     ans_nums = extract_numbers_from_text(answer)
@@ -234,6 +264,9 @@ def answer_numbers_not_in_context(answer: str, context: str) -> bool:
 
 
 def build_extractive_evidence(question: str, context: str, max_items: int = 6) -> str:
+    """
+    Строит список коротких цитат-доказательств из контекста.
+    """
     if not context:
         return ""
     q_toks = coverage_tokens(question)
@@ -273,6 +306,9 @@ def build_extractive_evidence(question: str, context: str, max_items: int = 6) -
 
 
 def _context_blocks(context: str) -> List[Tuple[str, str]]:
+    """
+    Разбивает форматированный контекст на блоки `(page, text)`.
+    """
     out: List[Tuple[str, str]] = []
     for b in [x.strip() for x in (context or "").split("\n\n") if x.strip()]:
         m = re.match(r"^\[стр\.\s*([^\]]+)\]\s*(.*)$", b, flags=re.IGNORECASE | re.DOTALL)
@@ -284,6 +320,9 @@ def _context_blocks(context: str) -> List[Tuple[str, str]]:
 
 
 def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
+    """
+    Извлекает лексические ограничения вопроса: ключевые токены и числа.
+    """
     tokens = coverage_tokens(question)
     numbers = extract_numbers_from_text(question)
     return {
@@ -293,6 +332,9 @@ def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
 
 
 def _intent_phrase_bonus(intent: str, sentence: str) -> float:
+    """
+    Добавляет intent-специфичные бонусы к score предложения.
+    """
     if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", sentence, flags=re.IGNORECASE):
         return 0.12
     if intent == "procedure" and re.search(r"шаг|этап|сначала|далее|затем", sentence, flags=re.IGNORECASE):
@@ -303,6 +345,9 @@ def _intent_phrase_bonus(intent: str, sentence: str) -> float:
 
 
 def _score_sentence(question_tokens: List[str], sentence: str, intent: str) -> float:
+    """
+    Считает score предложения для extractive-планирования.
+    """
     hit = word_hit_ratio(question_tokens, sentence)
     numeric = 0.16 if has_number(sentence) else 0.0
     date_bonus = 0.08 if DATE_RE.search(sentence) else 0.0
@@ -317,6 +362,9 @@ def _build_hierarchical_context(
     max_sections: int,
     max_sentences_per_section: int,
 ) -> Tuple[str, Dict[str, Any]]:
+    """
+    Собирает сокращённый иерархический контекст из лучших секций/предложений.
+    """
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
     section_scored: List[Tuple[float, str, List[Tuple[float, str]]]] = []
@@ -375,6 +423,9 @@ def build_extractive_plan(
     hierarchical_max_sections: int = 6,
     hierarchical_max_sentences_per_section: int = 3,
 ) -> Dict[str, Any]:
+    """
+    Строит extractive-plan: evidence, lexical report и synthesis-context для генерации.
+    """
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
     constraints = _question_lexical_constraints(question)
