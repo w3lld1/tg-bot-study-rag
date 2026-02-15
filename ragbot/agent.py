@@ -396,7 +396,7 @@ class BestStableRAGAgent:
         q = (user_question or "").lower()
 
         # Targeted structured repairs для системно провальных классов вопросов.
-        if context and "мисси" in q:
+        if context and re.search(r"\bмисси", q) and any(k in q for k in ["сбер", "формулиров", "ценност"]):
             page = _find_page_by_keywords(context, required=["миссия"], any_of=["уверенность", "надежность"])
             if not page:
                 page = (_first_real_pages(context, limit=1) or [None])[0]
@@ -443,16 +443,8 @@ class BestStableRAGAgent:
         if extractive:
             if is_not_found_answer(answer):
                 if intent == "numbers_and_dates":
-                    num_lines = [ln for ln in extractive.splitlines() if has_number(ln)]
-                    if num_lines:
-                        ranked = sorted(
-                            [(_numeric_fallback_line_quality(user_question, ln), ln) for ln in num_lines],
-                            key=lambda x: x[0],
-                            reverse=True,
-                        )
-                        good = [ln for score, ln in ranked if score >= 0.42]
-                        if good:
-                            return "По релевантным фрагментам:\n" + "\n".join(good[:2])
+                    # Для numeric-режима не возвращаем цитатный мусор вместо ответа.
+                    # Либо валидный итоговый ответ, либо строго not_found.
                     return "В документе не найдено."
                 if intent in {"structure_list"}:
                     return "В документе не найдено."

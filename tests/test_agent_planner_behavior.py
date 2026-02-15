@@ -39,7 +39,7 @@ def test_answer_stage_keeps_raw_context_for_citation_only():
     assert out == "ok"
     assert agent.answer_chain_citation_only.last_payload["context"] == "RAW-CONTEXT"
 
-def test_repair_stage_numbers_prefers_numeric_evidence_when_base_not_found():
+def test_repair_stage_numbers_returns_not_found_when_base_not_found():
     agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
     agent.answer_chain_citation_only = EchoChain()
 
@@ -51,9 +51,7 @@ def test_repair_stage_numbers_prefers_numeric_evidence_when_base_not_found():
         "numbers_and_dates",
     )
 
-    assert out.startswith("По релевантным фрагментам:")
-    assert "стр. 12" in out
-    assert "2022" in out
+    assert out == "В документе не найдено."
 
 
 def test_repair_stage_numbers_drops_noisy_numeric_fallback_when_lexically_missed():
@@ -92,6 +90,16 @@ def test_repair_stage_targeted_mission_repair():
 
     assert "Мы даем людям уверенность" in out
     assert "стр. 7" in out
+
+
+def test_repair_stage_mission_rule_not_triggered_for_komissionnyi_question():
+    agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
+    agent.answer_chain_citation_only = EchoChain()
+
+    context = "[стр. 65] Чистый комиссионный доход 697,1 млрд руб."
+    out = agent._repair_stage("Какой объем чистого комиссионного дохода Группы за 2022 год?", "В документе не найдено.", context, "numbers_and_dates")
+
+    assert out == "В документе не найдено."
 
 
 def test_repair_stage_targeted_risk_sections_repair():
