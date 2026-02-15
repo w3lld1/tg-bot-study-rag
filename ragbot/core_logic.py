@@ -97,6 +97,13 @@ def detect_intent_fast(user_question: str):
         return "compare", 0.80
     if any(k in q for k in ["требован", "обязан", "должен", "услови", "необходимо", "запрещ", "разреш", "стандарт", "регламент"]):
         return "requirements", 0.78
+
+    numeric_markers = [
+        "сколько", "когда", "дата", "процент", "сумм", "руб", "млн", "млрд", "показател", "метрик", "доля", "mau", "dau",
+        "объем", "уровень", "на сколько", "изменил", "изменен", "вырос", "сниз", "составил", "составила", "составили",
+    ]
+    has_numeric_signal = bool(re.search(r"\d", q) or any(k in q for k in numeric_markers))
+
     how_to_procedure = (
         (
             "как " in q
@@ -124,12 +131,16 @@ def detect_intent_fast(user_question: str):
         )
         or any(k in q for k in ["шаг", "процедур", "инструкц", "порядок", "алгоритм"])
     )
+
+    # Numeric intent приоритетнее procedure: это предотвращает ошибки типа
+    # "Как изменился объем ..." -> procedure.
+    if has_numeric_signal:
+        return "numbers_and_dates", 0.72
+
     if how_to_procedure:
         return "procedure", 0.70
     if any(k in q for k in ["что такое", "определени", "термин", "означает"]):
         return "definition", 0.70
-    if re.search(r"\d", q) or any(k in q for k in ["сколько", "когда", "дата", "процент", "сумм", "руб", "млн", "млрд", "показател", "метрик", "доля", "mau", "dau"]):
-        return "numbers_and_dates", 0.72
     return "default", 0.55
 
 
@@ -294,6 +305,8 @@ def build_extractive_evidence(question: str, context: str, max_items: int = 6) -
     out = []
     seen = set()
     for _, page, s in cand:
+        if page.strip() in {"?", "??", "XX", "xx"}:
+            continue
         key = re.sub(r"\W+", "", s.lower())[:120]
         if key in seen:
             continue

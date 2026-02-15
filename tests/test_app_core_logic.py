@@ -6,6 +6,7 @@ from ragbot.core_logic import (
     _extract_first_json_object,
     add_neighbors_from_parent_map,
     answer_numbers_not_in_context,
+    build_extractive_evidence,
     build_extractive_plan,
     coverage_score,
     detect_intent_fast,
@@ -62,6 +63,7 @@ def test_invoke_json_robust_falls_back_to_string_chain():
         ("как войти в систему", "procedure"),
         ("как проверить статус", "procedure"),
         ("как открыть форму заявки", "procedure"),
+        ("Как изменился объем обязательств Группы в 2022 году?", "numbers_and_dates"),
         ("как называется подсистема", "default"),
         ("как устроена подсистема", "default"),
         ("как формулируется миссия", "default"),
@@ -224,3 +226,13 @@ def test_build_extractive_plan_handles_paraphrase_lexically():
     plan = build_extractive_plan("Сколько составил рост выручки в 2026?", context, intent="numbers_and_dates", max_items=3)
     assert plan["evidence"]
     assert "2026" in plan["lexical_report"]["covered_numbers"]
+
+
+def test_build_extractive_evidence_skips_unknown_page_markers():
+    context = (
+        "[стр. ?] Технический мусор без подтверждения.\n\n"
+        "[стр. 12] Финансовый эффект составил 123 млрд руб."
+    )
+    out = build_extractive_evidence("Какой финансовый эффект?", context, max_items=5)
+    assert "стр. ?" not in out
+    assert "стр. 12" in out

@@ -136,6 +136,8 @@ def test_fix_broken_numbers(raw, expected):
     [
         ("стр. xx", True),
         ("(стр. ??)", True),
+        ("стр. ?", True),
+        ("(стр. ?)", True),
         ("стр. 10", False),
         ("page 12", False),
     ],
