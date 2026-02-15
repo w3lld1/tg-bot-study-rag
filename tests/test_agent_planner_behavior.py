@@ -39,14 +39,16 @@ def test_answer_stage_keeps_raw_context_for_citation_only():
     assert out == "ok"
     assert agent.answer_chain_citation_only.last_payload["context"] == "RAW-CONTEXT"
 
-def test_repair_stage_numbers_returns_not_found_when_base_not_found():
+def test_repair_stage_numbers_prefers_numeric_evidence_when_base_not_found():
     agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
     agent.answer_chain_citation_only = EchoChain()
 
     context = "[стр. 12] Финансовый эффект от применения AI в 2022 году ..."
     out = agent._repair_stage("вопрос", "В документе не найдено.", context, "numbers_and_dates")
 
-    assert out == "В документе не найдено."
+    assert out.startswith("По релевантным фрагментам:")
+    assert "стр. 12" in out
+    assert "2022" in out
 
 
 def test_numeric_terminal_guard_blocks_fragments_fallback():
