@@ -33,7 +33,7 @@ from ragbot.core_logic import (
 )
 from ragbot.indexing import load_index
 from ragbot.policy import get_retrieval_policy, get_second_pass_overrides, should_trigger_multiquery
-from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, normalize_query
+from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, has_number, normalize_query
 
 
 logger = logging.getLogger("tg-rag-bot")
@@ -276,7 +276,7 @@ class BestStableRAGAgent:
             and intent in {"numbers_and_dates", "citation_only", "summary", "compare", "default", "definition", "procedure", "requirements"}
         )
 
-    def _repair_stage(self, user_question: str, answer: str, context: str) -> str:
+    def _repair_stage(self, user_question: str, answer: str, context: str, intent: str) -> str:
         if context and (not is_not_found_answer(answer)) and (not _has_citation(answer)):
             citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
             if citations and (not is_not_found_answer(citations)) and _has_citation(citations):
@@ -285,12 +285,29 @@ class BestStableRAGAgent:
         extractive = build_extractive_evidence(user_question, context, max_items=5)
         if extractive:
             if is_not_found_answer(answer):
+                if intent in {"numbers_and_dates", "structure_list"}:
+                    return "В документе не найдено."
                 return "Найденные релевантные фрагменты:\n" + extractive
             body = (answer or "").strip()
             if "Фрагменты из документа:" not in body and "Ключевые цитаты:" not in body:
                 tail_title = "Фрагменты из документа:" if not _has_citation(body) else "Ключевые цитаты:"
                 return body + f"\n\n{tail_title}\n" + extractive
         return answer
+
+    def _enforce_numbers_terminal_quality(self, answer: str) -> Dict[str, Any]:
+        ans = (answer or "").strip()
+        low = ans.lower()
+
+        if low.startswith("найденные релевантные фрагменты"):
+            return {"answer": "В документе не найдено.", "guard_applied": True, "reason": "fragments_fallback"}
+
+        if is_not_found_answer(ans):
+            return {"answer": "В документе не найдено.", "guard_applied": False, "reason": "already_not_found"}
+
+        if has_number(ans) and _has_citation(ans):
+            return {"answer": ans, "guard_applied": False, "reason": "ok"}
+
+        return {"answer": "В документе не найдено.", "guard_applied": True, "reason": "missing_numeric_or_citation"}
 
     def ask(self, user_question: str) -> str:
         t0 = time.time()
@@ -387,11 +404,18 @@ class BestStableRAGAgent:
             }
 
         answer_before_repair = answer
-        answer = self._repair_stage(user_question, answer, context)
+        answer = self._repair_stage(user_question, answer, context, intent)
+
+        numeric_guard = {"guard_applied": False, "reason": "not_applicable"}
+        if intent == "numbers_and_dates":
+            numeric_guard = self._enforce_numbers_terminal_quality(answer)
+            answer = numeric_guard["answer"]
+
         trace["repair_stage"] = {
             "citation_repair_applied": answer != answer_before_repair,
             "final_answer_has_citation": _has_citation(answer),
             "final_answer_not_found": is_not_found_answer(answer),
+            "numeric_terminal_guard": numeric_guard,
         }
 
         dt = time.time() - t0
