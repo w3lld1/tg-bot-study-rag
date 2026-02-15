@@ -16,7 +16,7 @@ from ragbot.text_utils import clamp_text, safe_page_range
 
 def build_llm(settings: Any):
     """
-    Собирает и возвращает компонент/цепочку `llm` для этапов RAG-пайплайна.
+    Создаёт LLM-клиент GigaChat с параметрами модели из settings.
     """
     key = os.environ.get("GIGA_API_KEY") or os.environ.get("GIGACHAT_API_KEY")
     if not key:
@@ -33,7 +33,7 @@ def build_llm(settings: Any):
 
 def build_intent_chains(llm):
     """
-    Собирает и возвращает компонент/цепочку `intent_chains` для этапов RAG-пайплайна.
+    Собирает две цепочки определения intent: JSON-parser и fallback string-parser.
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -50,7 +50,7 @@ def build_intent_chains(llm):
 
 def get_intent_hybrid(intent_chain_json, intent_chain_str, user_question: str, threshold: float):
     """
-    Функция `get_intent_hybrid` модуля `chains`.
+    Комбинирует эвристику и LLM для устойчивого определения intent.
     """
     intent_h, conf_h = detect_intent_fast(user_question)
     q = (user_question or "").strip()
@@ -73,7 +73,7 @@ def get_intent_hybrid(intent_chain_json, intent_chain_str, user_question: str, t
 
 def build_multiquery_chains(llm):
     """
-    Собирает и возвращает компонент/цепочку `multiquery_chains` для этапов RAG-пайплайна.
+    Собирает цепочки генерации multiquery-переформулировок.
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -88,7 +88,7 @@ def build_multiquery_chains(llm):
 
 def build_rerank_chains(llm):
     """
-    Собирает и возвращает компонент/цепочку `rerank_chains` для этапов RAG-пайплайна.
+    Собирает цепочки LLM-rerank для переупорядочивания retrieved документов.
     """
     prompt = ChatPromptTemplate.from_messages([
         ("system", 'Ты — reranker. Верни ТОЛЬКО JSON: {"ranked_ids": [0,1,2]}'),
@@ -99,7 +99,7 @@ def build_rerank_chains(llm):
 
 def rerank_docs(rerank_chain_json, rerank_chain_str, question: str, docs: List[Document], keep: int, pool: int) -> List[Document]:
     """
-    Функция `rerank_docs` модуля `chains`.
+    Переранжирует документы через LLM и возвращает top-N с защитой от сбоев.
     """
     if not docs:
         return docs
@@ -147,7 +147,7 @@ def rerank_docs(rerank_chain_json, rerank_chain_str, question: str, docs: List[D
 
 def build_answer_chain_default(llm):
     """
-    Собирает и возвращает компонент/цепочку `answer_chain_default` для этапов RAG-пайплайна.
+    Собирает базовую цепочку ответа по контексту с обязательными ссылками на страницы.
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -165,7 +165,7 @@ def build_answer_chain_default(llm):
 
 def build_answer_chain_summary(llm):
     """
-    Собирает и возвращает компонент/цепочку `answer_chain_summary` для этапов RAG-пайплайна.
+    Собирает цепочку для summary-ответов (пункты + цитаты + страницы).
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -183,7 +183,7 @@ def build_answer_chain_summary(llm):
 
 def build_answer_chain_compare(llm):
     """
-    Собирает и возвращает компонент/цепочку `answer_chain_compare` для этапов RAG-пайплайна.
+    Собирает цепочку для compare-ответов с форматом сопоставления показателей.
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -202,7 +202,7 @@ def build_answer_chain_compare(llm):
 
 def build_answer_chain_citation_only(llm):
     """
-    Собирает и возвращает компонент/цепочку `answer_chain_citation_only` для этапов RAG-пайплайна.
+    Собирает цепочку для режима "только цитаты".
     """
     prompt = ChatPromptTemplate.from_messages([
         (
@@ -220,7 +220,7 @@ def build_answer_chain_citation_only(llm):
 
 def build_answer_chain_numbers_strict(llm):
     """
-    Собирает и возвращает компонент/цепочку `answer_chain_numbers_strict` для этапов RAG-пайплайна.
+    Собирает строгую цепочку ответов по числам/датам без домысливания.
     """
     prompt = ChatPromptTemplate.from_messages([
         (

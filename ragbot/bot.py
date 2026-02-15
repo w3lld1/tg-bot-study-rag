@@ -17,28 +17,28 @@ from ragbot.text_utils import ensure_dir
 
 def user_root_dir(settings: Any, user_id: int) -> str:
     """
-    Функция `user_root_dir` модуля `bot`.
+    Возвращает корневую директорию данных конкретного пользователя.
     """
     return os.path.join(settings.data_dir, "users", str(user_id))
 
 
 def user_index_dir(settings: Any, user_id: int) -> str:
     """
-    Функция `user_index_dir` модуля `bot`.
+    Возвращает путь к директории индекса пользователя.
     """
     return os.path.join(user_root_dir(settings, user_id), "rag_index")
 
 
 def user_pdf_path(settings: Any, user_id: int) -> str:
     """
-    Функция `user_pdf_path` модуля `bot`.
+    Возвращает путь к сохранённому PDF пользователя.
     """
     return os.path.join(user_root_dir(settings, user_id), "document.pdf")
 
 
 def user_has_index(settings: Any, user_id: int) -> bool:
     """
-    Функция `user_has_index` модуля `bot`.
+    Проверяет, проиндексирован ли документ пользователя (наличие ключевых файлов индекса).
     """
     idx = user_index_dir(settings, user_id)
     return os.path.exists(os.path.join(idx, "meta.json")) and os.path.exists(os.path.join(idx, "chunks.jsonl.gz"))
@@ -46,7 +46,7 @@ def user_has_index(settings: Any, user_id: int) -> bool:
 
 def reset_user_session(settings: Any, user_id: int) -> None:
     """
-    Функция `reset_user_session` модуля `bot`.
+    Полностью удаляет пользовательскую сессию (PDF, индекс, кеши).
     """
     root = user_root_dir(settings, user_id)
     if os.path.exists(root):
@@ -55,7 +55,7 @@ def reset_user_session(settings: Any, user_id: int) -> None:
 
 def is_pdf(doc: TgDocument) -> bool:
     """
-    Проверяет условие/признак и возвращает булево значение.
+    Проверяет, является ли Telegram-документ PDF по mime/type или расширению.
     """
     if doc.mime_type == "application/pdf":
         return True
@@ -66,7 +66,7 @@ def is_pdf(doc: TgDocument) -> bool:
 
 def build_dispatcher(settings: Any, agent_version: str, logger: logging.Logger) -> Dispatcher:
     """
-    Собирает и возвращает компонент/цепочку `dispatcher` для этапов RAG-пайплайна.
+    Создаёт и настраивает aiogram Dispatcher с обработчиками команд, PDF и текстовых запросов.
     """
     dp = Dispatcher()
 
@@ -262,7 +262,7 @@ def build_dispatcher(settings: Any, agent_version: str, logger: logging.Logger) 
 
 async def run_polling(bot_token: str, settings: Any, agent_version: str, logger: logging.Logger) -> None:
     """
-    Запускает основной runtime-цикл/операцию (bot polling или benchmark-процедуру).
+    Запускает Telegram-бота в режиме polling.
     """
     bot = Bot(token=bot_token)
     dp = build_dispatcher(settings=settings, agent_version=agent_version, logger=logger)

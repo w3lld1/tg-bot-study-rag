@@ -34,14 +34,14 @@ EXPLICIT_BAD_PAGE = re.compile(r"\(стр\.\s*(xx|\?\?)\)", re.IGNORECASE)
 
 def ensure_dir(path: str) -> None:
     """
-    Гарантирует подготовку окружения/ресурса перед выполнением дальнейших операций.
+    Создаёт директорию, если она отсутствует.
     """
     os.makedirs(path, exist_ok=True)
 
 
 def normalize_query(q: str) -> str:
     """
-    Нормализует входной текст для стабильного поиска и сравнения.
+    Нормализует текст запроса (trim + схлопывание пробелов).
     """
     q = (q or "").strip()
     q = re.sub(r"\s+", " ", q)
@@ -50,7 +50,7 @@ def normalize_query(q: str) -> str:
 
 def clamp_text(s: str, n: int) -> str:
     """
-    Функция `clamp_text` модуля `text_utils`.
+    Обрезает текст до заданной длины после нормализации пробелов.
     """
     s = re.sub(r"\s+", " ", (s or "")).strip()
     return s[:n]
@@ -58,7 +58,7 @@ def clamp_text(s: str, n: int) -> str:
 
 def safe_page_range(meta: Dict[str, Any]) -> str:
     """
-    Функция `safe_page_range` модуля `text_utils`.
+    Безопасно форматирует диапазон страниц из metadata.
     """
     p1 = meta.get("page_start", meta.get("page", None))
     p2 = meta.get("page_end", meta.get("page", None))
@@ -78,7 +78,7 @@ def safe_page_range(meta: Dict[str, Any]) -> str:
 
 def doc_key(d: Any) -> Tuple[Any, Any, Any, Any]:
     """
-    Функция `doc_key` модуля `text_utils`.
+    Строит уникальный ключ документа для dedup.
     """
     m = getattr(d, "metadata", None) or {}
     return (
@@ -91,7 +91,7 @@ def doc_key(d: Any) -> Tuple[Any, Any, Any, Any]:
 
 def dedup_docs(docs: List[Any], max_total: int = 240) -> List[Any]:
     """
-    Функция `dedup_docs` модуля `text_utils`.
+    Удаляет дубликаты документов с сохранением порядка.
     """
     seen = set()
     out: List[Any] = []
@@ -108,7 +108,7 @@ def dedup_docs(docs: List[Any], max_total: int = 240) -> List[Any]:
 
 def coverage_tokens(q: str) -> List[str]:
     """
-    Функция `coverage_tokens` модуля `text_utils`.
+    Извлекает информативные токены вопроса для оценки покрытия.
     """
     q = (q or "").lower()
     words = re.findall(r"[a-zа-яё0-9]+", q, flags=re.IGNORECASE)
@@ -122,7 +122,7 @@ def coverage_tokens(q: str) -> List[str]:
 
 def word_hit_ratio(tokens: List[str], text: str) -> float:
     """
-    Функция `word_hit_ratio` модуля `text_utils`.
+    Считает долю токенов вопроса, найденных в тексте.
     """
     if not tokens:
         return 0.0
@@ -135,7 +135,7 @@ def word_hit_ratio(tokens: List[str], text: str) -> float:
 
 def diversify_docs(docs: List[Any], max_per_group: int) -> List[Any]:
     """
-    Функция `diversify_docs` модуля `text_utils`.
+    Ограничивает число документов из одной группы (source/page/section).
     """
     counts = defaultdict(int)
     out: List[Any] = []
@@ -151,14 +151,14 @@ def diversify_docs(docs: List[Any], max_per_group: int) -> List[Any]:
 
 def has_number(text: str) -> bool:
     """
-    Проверяет условие/признак и возвращает булево значение.
+    Проверяет наличие числового паттерна в тексте.
     """
     return bool(NUM_RE.search(text or ""))
 
 
 def fix_broken_numbers(text: str) -> str:
     """
-    Функция `fix_broken_numbers` модуля `text_utils`.
+    Склеивает артефакты OCR/переносов в числах и процентах.
     """
     if not text:
         return text
@@ -172,7 +172,7 @@ def fix_broken_numbers(text: str) -> str:
 
 def contains_fake_pages(s: str) -> bool:
     """
-    Функция `contains_fake_pages` модуля `text_utils`.
+    Проверяет наличие некорректных ссылок на страницы (`стр. XX/??`).
     """
     if not s:
         return False
@@ -181,7 +181,7 @@ def contains_fake_pages(s: str) -> bool:
 
 def extract_numbers_from_text(s: str) -> List[str]:
     """
-    Извлекает структуру/сущности/числа из текста для последующей валидации и ответа.
+    Извлекает и нормализует уникальные числовые значения из текста.
     """
     if not s:
         return []

@@ -43,18 +43,18 @@ _CITATION_RE = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
 
 def _has_citation(answer: str) -> bool:
     """
-    Внутренний helper `_has_citation` для инкапсуляции локальной логики модуля.
+    Проверяет, содержит ли текст ссылку на страницу вида `(стр. X)` или `стр. X`.
     """
     return bool(_CITATION_RE.search(answer or ""))
 
 
 class BestStableRAGAgent:
     """
-    Основной RAG-агент: оркеструет retrieval, планирование, генерацию, валидацию и fallback-логику ответа.
+    Основной runtime-класс RAG-агента: управляет retrieval, генерацией ответа, валидацией и fallback-стратегиями.
     """
     def __init__(self, settings: Any, index_dir: str, agent_version: str):
         """
-        Внутренний helper `__init__` для инкапсуляции локальной логики модуля.
+        Инициализирует агент: загружает индексы, строит parent→chunks map и поднимает все LLM-цепочки.
         """
         self.settings = settings
         self.index_dir = index_dir
@@ -91,20 +91,20 @@ class BestStableRAGAgent:
 
     def get_last_trace(self) -> Dict[str, Any]:
         """
-        Функция `get_last_trace` модуля `agent`.
+        Возвращает технический trace последнего запроса (intent/retrieval/validation/repair).
         """
         return dict(self._last_trace or {})
 
     def _bm25_invoke(self, q: str, k: int) -> List[Document]:
         """
-        Внутренний helper `_bm25_invoke` для инкапсуляции локальной логики модуля.
+        Выполняет BM25-поиск с заданным `k` и обрезает результат до нужного размера.
         """
         self.bm25.k = max(1, int(k))
         return (self.bm25.invoke(q) or [])[:k]
 
     def _retrieve_single(self, q: str, k_per_query: int) -> List[Document]:
         """
-        Внутренний helper `_retrieve_single` для инкапсуляции локальной логики модуля.
+        Один проход гибридного retrieval для одного запроса: BM25 + FAISS + dedup.
         """
         q = normalize_query(q)
         bm25_docs = self._bm25_invoke(q, k_per_query)
@@ -113,7 +113,7 @@ class BestStableRAGAgent:
 
     def _retrieve_with_trace(self, query: str, intent: str, overrides: Optional[Dict[str, Any]] = None) -> Tuple[List[Document], Dict[str, Any]]:
         """
-        Выполняет retrieval с трассировкой параметров/решений и возвращает документы + trace.
+        Полный retrieval-этап с трассировкой: policy, coverage, multiquery, rerank и post-processing.
         """
         query = normalize_query(query)
         o = overrides or {}
@@ -245,14 +245,14 @@ class BestStableRAGAgent:
 
     def _retrieve(self, query: str, intent: str, overrides: Optional[Dict[str, Any]] = None) -> List[Document]:
         """
-        Внутренний helper `_retrieve` для инкапсуляции локальной логики модуля.
+        Упрощённая обёртка над `_retrieve_with_trace`, возвращает только документы.
         """
         docs, _ = self._retrieve_with_trace(query, intent, overrides=overrides)
         return docs
 
     def _intent_stage(self, user_question: str) -> Dict[str, Any]:
         """
-        Внутренний helper `_intent_stage` для инкапсуляции локальной логики модуля.
+        Определяет intent/уверенность/рабочий query для вопроса пользователя.
         """
         intent_obj = get_intent_hybrid(
             self.intent_chain_json,
@@ -267,7 +267,7 @@ class BestStableRAGAgent:
 
     def _answer_stage(self, intent: str, user_question: str, context: str, plan: Optional[Dict[str, Any]] = None, fallback_answer: str = "") -> str:
         """
-        Внутренний helper `_answer_stage` для инкапсуляции локальной логики модуля.
+        Выбирает нужную answer-chain по intent и генерирует черновой ответ.
         """
         synthesis_context = (plan or {}).get("synthesis_context", context)
         if intent == "summary":
@@ -284,7 +284,7 @@ class BestStableRAGAgent:
 
     def _validation_stage(self, intent: str, answer: str, context: str) -> Dict[str, Any]:
         """
-        Внутренний helper `_validation_stage` для инкапсуляции локальной логики модуля.
+        Проверяет ответ на типовые ошибки: fake pages, numeric mismatch, отсутствие цитат.
         """
         has_fake_pages = contains_fake_pages(answer)
         numbers_mismatch = intent in {"numbers_and_dates", "compare"} and answer_numbers_not_in_context(answer, context)
@@ -301,13 +301,13 @@ class BestStableRAGAgent:
 
     def _second_pass_overrides(self, intent: str) -> Dict[str, Any]:
         """
-        Внутренний helper `_second_pass_overrides` для инкапсуляции локальной логики модуля.
+        Формирует усиленные параметры retrieval для второго прохода.
         """
         return get_second_pass_overrides(self.settings, intent)
 
     def _should_second_pass(self, intent: str, validation: Dict[str, Any]) -> bool:
         """
-        Внутренний helper `_should_second_pass` для инкапсуляции локальной логики модуля.
+        Решает, нужен ли second pass по результатам первичной валидации.
         """
         return bool(
             self.settings.second_pass_enabled
@@ -317,7 +317,7 @@ class BestStableRAGAgent:
 
     def _repair_stage(self, user_question: str, answer: str, context: str, intent: str) -> str:
         """
-        Внутренний helper `_repair_stage` для инкапсуляции локальной логики модуля.
+        Пост-обработка ответа: добавление цитат/фрагментов и выравнивание not-found поведения.
         """
         if context and (not is_not_found_answer(answer)) and (not _has_citation(answer)):
             citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
@@ -338,7 +338,7 @@ class BestStableRAGAgent:
 
     def _enforce_numbers_terminal_quality(self, answer: str) -> Dict[str, Any]:
         """
-        Применяет финальный quality-guard для numeric-ответов: число+цитата или честный not found.
+        Финальный guard для numeric-intent: либо число+ссылка, либо "В документе не найдено.".
         """
         ans = (answer or "").strip()
         low = ans.lower()
@@ -356,7 +356,7 @@ class BestStableRAGAgent:
 
     def ask(self, user_question: str) -> str:
         """
-        Полный pipeline обработки вопроса: intent → retrieval → answer → validation → repair.
+        Основной метод QA: orchestrator всего пайплайна от intent до финального ответа.
         """
         t0 = time.time()
         user_question = normalize_query(user_question)

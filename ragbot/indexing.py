@@ -22,11 +22,11 @@ logger = logging.getLogger("tg-rag-bot")
 
 class CachedEmbeddings(Embeddings):
     """
-    Обёртка над embeddings-моделью с LRU-кэшем для повторяющихся query-эмбеддингов.
+    LRU-кеш для query-эмбеддингов поверх базовой embeddings-модели.
     """
     def __init__(self, base: Embeddings, max_size: int = 512):
         """
-        Внутренний helper `__init__` для инкапсуляции локальной логики модуля.
+        Инициализирует кеш embeddings с ограничением максимального размера.
         """
         self.base = base
         self.max_size = max_size
@@ -34,7 +34,7 @@ class CachedEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> List[float]:
         """
-        Функция `embed_query` модуля `indexing`.
+        Возвращает эмбеддинг запроса из кеша или вычисляет и кеширует его.
         """
         key = normalize_query(text)
         if key in self._cache:
@@ -49,14 +49,14 @@ class CachedEmbeddings(Embeddings):
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
-        Функция `embed_documents` модуля `indexing`.
+        Проксирует batch-эмбеддинг документов в базовую модель.
         """
         return self.base.embed_documents(texts)
 
 
 def build_embeddings(settings: Any) -> Embeddings:
     """
-    Собирает и возвращает компонент/цепочку `embeddings` для этапов RAG-пайплайна.
+    Создаёт embeddings-компонент GigaChat с query-кешированием.
     """
     giga_api_key = os.getenv("GIGACHAT_API_KEY") or os.getenv("GIGA_API_KEY")
     if not giga_api_key:
@@ -72,7 +72,7 @@ def build_embeddings(settings: Any) -> Embeddings:
 
 def load_pdf_pages(pdf_path: str) -> List[Document]:
     """
-    Загружает данные/артефакты, необходимые для этапа `pdf_pages`.
+    Читает PDF постранично и возвращает список Document с очищенным текстом.
     """
     docs: List[Document] = []
     with fitz.open(pdf_path) as pdf:
@@ -107,7 +107,7 @@ _HEADING_IGNORE = [
 
 def detect_heading_on_page(page_text: str) -> Optional[str]:
     """
-    Определяет тип/структуру входных данных по эвристическим правилам.
+    Эвристически определяет заголовок раздела на странице.
     """
     lines = [ln.strip() for ln in (page_text or "").splitlines() if ln.strip()]
     for ln in lines[:12]:
@@ -127,7 +127,7 @@ def detect_heading_on_page(page_text: str) -> Optional[str]:
 
 def build_parent_docs_section_aware(pages: List[Document]) -> List[Document]:
     """
-    Собирает и возвращает компонент/цепочку `parent_docs_section_aware` для этапов RAG-пайплайна.
+    Группирует страницы в section-aware parent-документы.
     """
     parents: List[Document] = []
     cur_pages: List[Document] = []
@@ -169,7 +169,7 @@ def build_parent_docs_section_aware(pages: List[Document]) -> List[Document]:
 
 def chunk_parent_docs(parent_docs: List[Document], settings: Any) -> List[Document]:
     """
-    Функция `chunk_parent_docs` модуля `indexing`.
+    Нарезает parent-документы на чанки с overlap и метаданными chunk_id.
     """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
@@ -189,7 +189,7 @@ def chunk_parent_docs(parent_docs: List[Document], settings: Any) -> List[Docume
 
 def _write_chunks_jsonl_gz(path: str, docs: List[Document]) -> None:
     """
-    Внутренний helper `_write_chunks_jsonl_gz` для инкапсуляции локальной логики модуля.
+    Сохраняет чанки в gzip-jsonl для последующей загрузки BM25 и отладки.
     """
     with gzip.open(path, "wt", encoding="utf-8") as f:
         for d in docs:
@@ -199,7 +199,7 @@ def _write_chunks_jsonl_gz(path: str, docs: List[Document]) -> None:
 
 def _read_chunks_jsonl_gz(path: str) -> List[Document]:
     """
-    Внутренний helper `_read_chunks_jsonl_gz` для инкапсуляции локальной логики модуля.
+    Загружает чанки из gzip-jsonl обратно в список Document.
     """
     out: List[Document] = []
     with gzip.open(path, "rt", encoding="utf-8") as f:
@@ -214,7 +214,7 @@ def _read_chunks_jsonl_gz(path: str) -> List[Document]:
 
 def _check_settings_compat(stored: dict, current: Any) -> None:
     """
-    Выполняет проверку совместимости/валидности и бросает исключение при нарушении условий.
+    Проверяет совместимость настроек текущего рантайма и сохранённого индекса.
     """
     if current.allow_index_settings_mismatch:
         return
@@ -233,7 +233,7 @@ def _check_settings_compat(stored: dict, current: Any) -> None:
 
 def ingest_pdf(pdf_path: str, settings: Any, index_dir: str, agent_version: str) -> None:
     """
-    Проводит полный ingest-процесс: чтение PDF, чанкинг и построение индексов.
+    Полный ingest: чтение PDF, section-grouping, chunking, FAISS и сохранение артефактов.
     """
     faiss_dir = os.path.join(index_dir, "faiss")
     meta_json = os.path.join(index_dir, "meta.json")
@@ -280,7 +280,7 @@ def ingest_pdf(pdf_path: str, settings: Any, index_dir: str, agent_version: str)
 
 def load_index(settings: Any, index_dir: str, llm_builder):
     """
-    Загружает данные/артефакты, необходимые для этапа `index`.
+    Загружает LLM, FAISS, BM25 и чанки из индекс-директории для онлайн-ответов.
     """
     faiss_dir = os.path.join(index_dir, "faiss")
     meta_json = os.path.join(index_dir, "meta.json")

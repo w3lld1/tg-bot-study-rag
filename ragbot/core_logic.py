@@ -31,7 +31,7 @@ _NOT_FOUND_PAT = re.compile(r"^\s*(в документе не найдено|н�
 
 def coverage_score(question: str, docs: List[Any], intent: str) -> float:
     """
-    Функция `coverage_score` модуля `core_logic`.
+    Оценивает покрытие вопроса текущим набором документов (общий и numeric-режим).
     """
     if not docs:
         return 0.0
@@ -46,7 +46,7 @@ def coverage_score(question: str, docs: List[Any], intent: str) -> float:
 
 def _extract_first_json_object(s: str) -> Optional[dict]:
     """
-    Внутренний helper `_extract_first_json_object` для инкапсуляции локальной логики модуля.
+    Пытается извлечь первый корректный JSON-объект из сырого текстового ответа LLM.
     """
     if not s:
         return None
@@ -65,7 +65,7 @@ def _extract_first_json_object(s: str) -> Optional[dict]:
 
 def invoke_json_robust(chain_json, chain_str, inputs: dict, fallback: dict, retries: int = 1) -> dict:
     """
-    Функция `invoke_json_robust` модуля `core_logic`.
+    Надёжно вызывает JSON-цепочку с fallback на string-цепочку и парсинг JSON.
     """
     for _ in range(max(1, retries + 1)):
         try:
@@ -86,7 +86,7 @@ def invoke_json_robust(chain_json, chain_str, inputs: dict, fallback: dict, retr
 
 def detect_intent_fast(user_question: str):
     """
-    Определяет тип/структуру входных данных по эвристическим правилам.
+    Быстрая эвристическая классификация intent по ключевым маркерам вопроса.
     """
     q = (user_question or "").lower()
     if any(k in q for k in _CITATION_ONLY_STRONG):
@@ -135,7 +135,7 @@ def detect_intent_fast(user_question: str):
 
 def format_context(docs: List[Any], limit: int, max_chars: int) -> str:
     """
-    Форматирует данные в текст, пригодный для ответа пользователю или LLM-контекста.
+    Формирует компактный контекст из документов с метками страниц и ограничением по длине.
     """
     out = []
     total = 0
@@ -162,7 +162,7 @@ def format_context(docs: List[Any], limit: int, max_chars: int) -> str:
 
 def is_not_found_answer(ans: str) -> bool:
     """
-    Проверяет условие/признак и возвращает булево значение.
+    Проверяет, является ли ответ "not found"-формулировкой.
     """
     if not ans:
         return True
@@ -174,7 +174,7 @@ def is_not_found_answer(ans: str) -> bool:
 
 def add_neighbors_from_parent_map(parent_map: dict, docs: List[Any], window: int, max_total: int = 320) -> List[Any]:
     """
-    Функция `add_neighbors_from_parent_map` модуля `core_logic`.
+    Добавляет соседние чанки из той же секции/страниц для повышения полноты доказательств.
     """
     if not docs or window <= 0:
         return docs
@@ -219,7 +219,7 @@ def add_neighbors_from_parent_map(parent_map: dict, docs: List[Any], window: int
 
 def _num_rerank_score(question: str, doc: Any) -> float:
     """
-    Внутренний helper `_num_rerank_score` для инкапсуляции локальной логики модуля.
+    Считает эвристический score для numeric-rerank (лексика + числа + даты).
     """
     q = (question or "").lower()
     text = (doc.page_content or "").lower()
@@ -233,7 +233,7 @@ def _num_rerank_score(question: str, doc: Any) -> float:
 
 def rerank_numbers_heuristic(question: str, docs: List[Any], keep: int) -> List[Any]:
     """
-    Функция `rerank_numbers_heuristic` модуля `core_logic`.
+    Пересортировывает документы для numeric-вопросов и оставляет top-K.
     """
     if not docs:
         return docs
@@ -244,7 +244,7 @@ def rerank_numbers_heuristic(question: str, docs: List[Any], keep: int) -> List[
 
 def answer_numbers_not_in_context(answer: str, context: str) -> bool:
     """
-    Функция `answer_numbers_not_in_context` модуля `core_logic`.
+    Проверяет, что числа в ответе действительно встречаются в контексте.
     """
     if not answer or not context:
         return False
@@ -265,7 +265,7 @@ def answer_numbers_not_in_context(answer: str, context: str) -> bool:
 
 def build_extractive_evidence(question: str, context: str, max_items: int = 6) -> str:
     """
-    Собирает и возвращает компонент/цепочку `extractive_evidence` для этапов RAG-пайплайна.
+    Строит список коротких цитат-доказательств из контекста.
     """
     if not context:
         return ""
@@ -307,7 +307,7 @@ def build_extractive_evidence(question: str, context: str, max_items: int = 6) -
 
 def _context_blocks(context: str) -> List[Tuple[str, str]]:
     """
-    Внутренний helper `_context_blocks` для инкапсуляции локальной логики модуля.
+    Разбивает форматированный контекст на блоки `(page, text)`.
     """
     out: List[Tuple[str, str]] = []
     for b in [x.strip() for x in (context or "").split("\n\n") if x.strip()]:
@@ -321,7 +321,7 @@ def _context_blocks(context: str) -> List[Tuple[str, str]]:
 
 def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
     """
-    Внутренний helper `_question_lexical_constraints` для инкапсуляции локальной логики модуля.
+    Извлекает лексические ограничения вопроса: ключевые токены и числа.
     """
     tokens = coverage_tokens(question)
     numbers = extract_numbers_from_text(question)
@@ -333,7 +333,7 @@ def _question_lexical_constraints(question: str) -> Dict[str, List[str]]:
 
 def _intent_phrase_bonus(intent: str, sentence: str) -> float:
     """
-    Внутренний helper `_intent_phrase_bonus` для инкапсуляции локальной логики модуля.
+    Добавляет intent-специфичные бонусы к score предложения.
     """
     if intent == "requirements" and re.search(r"долж|обязан|необходимо|запрещ", sentence, flags=re.IGNORECASE):
         return 0.12
@@ -346,7 +346,7 @@ def _intent_phrase_bonus(intent: str, sentence: str) -> float:
 
 def _score_sentence(question_tokens: List[str], sentence: str, intent: str) -> float:
     """
-    Внутренний helper `_score_sentence` для инкапсуляции локальной логики модуля.
+    Считает score предложения для extractive-планирования.
     """
     hit = word_hit_ratio(question_tokens, sentence)
     numeric = 0.16 if has_number(sentence) else 0.0
@@ -363,7 +363,7 @@ def _build_hierarchical_context(
     max_sentences_per_section: int,
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    Внутренний helper `_build_hierarchical_context` для инкапсуляции локальной логики модуля.
+    Собирает сокращённый иерархический контекст из лучших секций/предложений.
     """
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
@@ -424,7 +424,7 @@ def build_extractive_plan(
     hierarchical_max_sentences_per_section: int = 3,
 ) -> Dict[str, Any]:
     """
-    Собирает и возвращает компонент/цепочку `extractive_plan` для этапов RAG-пайплайна.
+    Строит extractive-plan: evidence, lexical report и synthesis-context для генерации.
     """
     blocks = _context_blocks(context)
     q_toks = coverage_tokens(question)
