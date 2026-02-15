@@ -116,8 +116,18 @@ def coverage_tokens(q: str) -> List[str]:
         "и", "в", "на", "по", "за", "к", "о", "об", "что", "это", "как", "ли", "или", "для", "про", "из",
         "при", "без", "над", "под", "до", "от", "же", "мы", "вы", "он", "она", "они", "оно", "кто", "где",
     }
-    words = [w for w in words if len(w) >= 4 and w not in stop]
-    return words[:10]
+    short_keep = {"ai", "ии", "mau", "dau", "p2p", "esg", "kpi"}
+    words = [w for w in words if ((len(w) >= 4) or (w in short_keep)) and w not in stop]
+    out: List[str] = []
+    seen = set()
+    for w in words:
+        if w in seen:
+            continue
+        seen.add(w)
+        out.append(w)
+        if len(out) >= 12:
+            break
+    return out
 
 
 def word_hit_ratio(tokens: List[str], text: str) -> float:

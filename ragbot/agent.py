@@ -33,7 +33,7 @@ from ragbot.core_logic import (
 )
 from ragbot.indexing import load_index
 from ragbot.policy import get_retrieval_policy, get_second_pass_overrides, should_trigger_multiquery
-from ragbot.text_utils import contains_fake_pages, dedup_docs, diversify_docs, has_number, normalize_query
+from ragbot.text_utils import contains_fake_pages, coverage_tokens, dedup_docs, diversify_docs, has_number, normalize_query
 
 
 logger = logging.getLogger("tg-rag-bot")
@@ -157,6 +157,18 @@ class BestStableRAGAgent:
         bm25_docs = self._bm25_invoke(query, bm25_k)
         faiss_docs = self.vectorstore.similarity_search(query, k=faiss_k)
         docs = dedup_docs(bm25_docs + faiss_docs, max_total=280)
+
+        if intent == "numbers_and_dates":
+            # Детерминированный query-rewrite для числовых вопросов (без LLM)
+            toks = coverage_tokens(query)
+            numeric_hints = [t for t in ["млрд", "млн", "трлн", "%", "процент", "ai", "ии", "mau", "dau", "p2p"] if t in (query or "").lower()]
+            seed = " ".join(dict.fromkeys(toks + numeric_hints))
+            if seed and seed != query:
+                seed_bm25 = self._bm25_invoke(seed, max(12, min(40, bm25_k // 2)))
+                seed_faiss = self.vectorstore.similarity_search(seed, k=max(12, min(40, faiss_k // 2)))
+                docs = dedup_docs(docs + seed_bm25 + seed_faiss, max_total=320)
+                trace["numeric_seed_query"] = seed
+
         trace["docs_initial"] = len(docs)
 
         cov = coverage_score(query, docs, intent)
@@ -327,7 +339,12 @@ class BestStableRAGAgent:
         extractive = build_extractive_evidence(user_question, context, max_items=5)
         if extractive:
             if is_not_found_answer(answer):
-                if intent in {"numbers_and_dates", "structure_list"}:
+                if intent == "numbers_and_dates":
+                    num_lines = [ln for ln in extractive.splitlines() if has_number(ln)]
+                    if num_lines:
+                        return "По релевантным фрагментам:\n" + "\n".join(num_lines[:2])
+                    return "В документе не найдено."
+                if intent in {"structure_list"}:
                     return "В документе не найдено."
                 return "Найденные релевантные фрагменты:\n" + extractive
             body = (answer or "").strip()
@@ -397,8 +414,11 @@ class BestStableRAGAgent:
             "hierarchical_report": (plan.get("hierarchical_context", {}) or {}).get("report", {}),
         }
 
-        answer = self._answer_stage(intent, user_question, context, plan=plan)
-        validation = self._validation_stage(intent, answer, context)
+        active_context = context
+        active_plan = plan
+
+        answer = self._answer_stage(intent, user_question, active_context, plan=active_plan)
+        validation = self._validation_stage(intent, answer, active_context)
         trace["answer_stage"] = {
             "intent": intent,
             "chain": intent if intent in {"summary", "compare", "citation_only", "numbers_and_dates"} else "default",
@@ -429,10 +449,14 @@ class BestStableRAGAgent:
                 if intent in {"numbers_and_dates", "compare"}:
                     if not answer_numbers_not_in_context(answer2, context2) and not is_not_found_answer(answer2):
                         answer = answer2
+                        active_context = context2
+                        active_plan = plan2
                         accepted = True
                 else:
                     if not is_not_found_answer(answer2):
                         answer = answer2
+                        active_context = context2
+                        active_plan = plan2
                         accepted = True
 
             trace["second_pass"] = {
@@ -452,7 +476,7 @@ class BestStableRAGAgent:
             }
 
         answer_before_repair = answer
-        answer = self._repair_stage(user_question, answer, context, intent)
+        answer = self._repair_stage(user_question, answer, active_context, intent)
 
         numeric_guard = {"guard_applied": False, "reason": "not_applicable"}
         if intent == "numbers_and_dates":

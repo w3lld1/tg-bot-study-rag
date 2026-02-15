@@ -228,9 +228,21 @@ def add_neighbors_from_parent_map(parent_map: dict, docs: List[Any], window: int
     return out
 
 
+def _question_units(question: str) -> List[str]:
+    """
+    Извлекает единицы/маркеры из вопроса (для numeric-rerank).
+    """
+    q = (question or "").lower()
+    units: List[str] = []
+    for u in ["%", "процент", "млрд", "млн", "трлн", "тыс", "тысяч", "руб", "ai", "ии", "mau", "dau", "p2p"]:
+        if u in q:
+            units.append(u)
+    return units
+
+
 def _num_rerank_score(question: str, doc: Any) -> float:
     """
-    Считает эвристический score для numeric-rerank (лексика + числа + даты).
+    Считает эвристический score для numeric-rerank (лексика + числа + даты + единицы).
     """
     q = (question or "").lower()
     text = (doc.page_content or "").lower()
@@ -239,7 +251,9 @@ def _num_rerank_score(question: str, doc: Any) -> float:
     has_num = 1.0 if has_number(text) else 0.0
     has_pct = 1.0 if "%" in text or "процент" in text else 0.0
     has_date = 1.0 if DATE_RE.search(text) else 0.0
-    return 0.55 * hit + 0.20 * has_num + 0.15 * has_pct + 0.10 * has_date
+    units = _question_units(q)
+    unit_hit = 1.0 if units and any(u in text for u in units) else 0.0
+    return 0.48 * hit + 0.20 * has_num + 0.12 * has_pct + 0.10 * has_date + 0.10 * unit_hit
 
 
 def rerank_numbers_heuristic(question: str, docs: List[Any], keep: int) -> List[Any]:
