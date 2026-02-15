@@ -9,6 +9,7 @@ from ragbot.text_utils import (
     doc_key,
     extract_numbers_from_text,
     has_number,
+    normalize_query,
     safe_page_range,
     word_hit_ratio,
 )
@@ -238,6 +239,80 @@ def _question_units(question: str) -> List[str]:
         if u in q:
             units.append(u)
     return units
+
+
+def targeted_query_expansions(question: str, intent: str) -> List[str]:
+    """
+    Детерминированные query-экспансии для проблемных классов вопросов.
+    """
+    q = (question or "").lower()
+    out: List[str] = []
+
+    if any(k in q for k in ["мисси", "ценност"]):
+        out.append("миссия и ценности мы даем людям уверенность и надежность делаем их жизнь")
+
+    if any(k in q for k in ["ai", "ии", "салют", "mau", "p2p", "надежност", "транзакцион"]):
+        out.append("технологическое лидерство финансовый эффект от применения ai доля процессов банк салют mau p2p надежность транзакционных сервисов")
+
+    if any(k in q for k in ["риск", "комитет", "аудит", "ключевые разделы"]):
+        out.append("отчет по рискам система управления рисками подходы к управлению отдельными видами рисков комитет по рискам комитет по аудиту")
+
+    if intent == "numbers_and_dates" and any(k in q for k in ["эффект", "доля", "объем", "изменил", "прибыль", "маржа"]):
+        out.append("ключевые финансовые показатели 2022 млрд млн трлн проценты")
+
+    seen = set()
+    uniq: List[str] = []
+    for x in out:
+        x = normalize_query(x)
+        if x and x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
+
+def _section_bonus(question: str, intent: str, doc: Any) -> float:
+    """
+    Бонус релевантности по section_title/content для целевых доменов.
+    """
+    q = (question or "").lower()
+    m = doc.metadata or {}
+    title = str(m.get("section_title", "") or "").lower()
+    text = (doc.page_content or "")[:400].lower()
+    hay = f"{title} {text}"
+
+    bonus = 0.0
+    if any(k in q for k in ["мисси", "ценност"]) and ("миссия" in hay or "ценност" in hay):
+        bonus += 0.18
+    if any(k in q for k in ["ai", "ии", "салют", "mau", "p2p", "надежност", "транзакцион"]) and (
+        "технологическ" in hay or "ai" in hay or "ии" in hay or "салют" in hay
+    ):
+        bonus += 0.20
+    if any(k in q for k in ["риск", "комитет", "аудит", "ключевые разделы"]) and (
+        "отчет по рискам" in hay or "система управления рисками" in hay or "комитет" in hay or "аудит" in hay
+    ):
+        bonus += 0.22
+
+    if intent == "numbers_and_dates" and ("2022" in hay or has_number(hay)):
+        bonus += 0.06
+    return bonus
+
+
+def rerank_with_section_focus(question: str, intent: str, docs: List[Any], keep: int) -> List[Any]:
+    """
+    Реранк с фокусом на тематические секции для целевых вопросов.
+    """
+    if not docs:
+        return docs
+    toks = coverage_tokens(question)
+    scored = []
+    for d in docs:
+        text = (d.page_content or "").lower()
+        lex = word_hit_ratio(toks, text)
+        num = 0.08 if has_number(text) else 0.0
+        sec = _section_bonus(question, intent, d)
+        scored.append((lex + num + sec, d))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [d for _, d in scored[:keep]]
 
 
 def _num_rerank_score(question: str, doc: Any) -> float:

@@ -14,6 +14,8 @@ from ragbot.core_logic import (
     invoke_json_robust,
     is_not_found_answer,
     rerank_numbers_heuristic,
+    rerank_with_section_focus,
+    targeted_query_expansions,
 )
 
 
@@ -123,6 +125,24 @@ def test_rerank_numbers_heuristic_prefers_relevant_docs():
     ]
     out = rerank_numbers_heuristic("сколько рост процентов 2026", docs, keep=2)
     assert out[0].page_content == "рост 7% в 2026 году"
+
+
+def test_targeted_query_expansions_for_risk_and_mission():
+    q1 = "Какие комитеты участвуют в системе управления рисками?"
+    q2 = "Как сформулирована миссия Сбера?"
+    e1 = targeted_query_expansions(q1, "default")
+    e2 = targeted_query_expansions(q2, "default")
+    assert any("комитет по рискам" in x for x in e1)
+    assert any("миссия и ценности" in x for x in e2)
+
+
+def test_rerank_with_section_focus_boosts_target_section():
+    docs = [
+        DummyDoc("общий текст", {"page": 1, "section_title": "Прочее"}),
+        DummyDoc("описание процессов", {"page": 2, "section_title": "ОТЧЕТ ПО РИСКАМ"}),
+    ]
+    out = rerank_with_section_focus("Какие ключевые разделы включает часть отчета по рискам?", "default", docs, keep=2)
+    assert out[0].metadata.get("section_title") == "ОТЧЕТ ПО РИСКАМ"
 
 
 def test_answer_numbers_not_in_context():
