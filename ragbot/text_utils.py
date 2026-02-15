@@ -28,8 +28,8 @@ NUM_RE = re.compile(
 
 DATE_RE = re.compile(r"\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b|\b\d{4}\b", re.UNICODE)
 
-BAD_PAGE_PAT = re.compile(r"\bстр\.\s*(xx|\?\?)\b", re.IGNORECASE)
-EXPLICIT_BAD_PAGE = re.compile(r"\(стр\.\s*(xx|\?\?)\)", re.IGNORECASE)
+BAD_PAGE_PAT = re.compile(r"\bстр\.?\s*(xx|\?\?|\?)(?!\d)", re.IGNORECASE)
+EXPLICIT_BAD_PAGE = re.compile(r"\(стр\.?\s*(xx|\?\?|\?)\)", re.IGNORECASE)
 
 
 def ensure_dir(path: str) -> None:
