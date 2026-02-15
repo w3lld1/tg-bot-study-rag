@@ -38,3 +38,18 @@ def test_answer_stage_keeps_raw_context_for_citation_only():
 
     assert out == "ok"
     assert agent.answer_chain_citation_only.last_payload["context"] == "RAW-CONTEXT"
+
+
+def test_answer_stage_uses_structure_path_without_llm_chain():
+    agent = BestStableRAGAgent.__new__(BestStableRAGAgent)
+    agent.answer_chain_default = EchoChain()
+    agent.answer_chain_summary = EchoChain()
+    agent.answer_chain_compare = EchoChain()
+    agent.answer_chain_citation_only = EchoChain()
+    agent.answer_chain_numbers = EchoChain()
+
+    context = "[стр. 5 | Раздел A] Описание."
+    out = agent._answer_stage("structure_list", "какие разделы", context, plan={"synthesis_context": "x"})
+
+    assert "Список по документу" in out
+    assert "Раздел A" in out

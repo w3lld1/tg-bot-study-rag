@@ -12,6 +12,7 @@ _ALLOWED_INTENTS = {
     "definition",
     "procedure",
     "requirements",
+    "structure_list",
 }
 
 
@@ -33,6 +34,7 @@ _POLICY_TABLE: Dict[str, Dict[str, Dict[str, Any]]] = {
         "definition": {"cov_threshold": 0.50, "force_multiquery": False},
         "procedure": {"cov_threshold": 0.50, "force_multiquery": False},
         "requirements": {"cov_threshold": 0.50, "force_multiquery": False},
+        "structure_list": {"cov_threshold": 0.50, "force_multiquery": False},
     },
     # AB hypothesis rationale:
     # - summary/definition/procedure/requirements are often semantically wide in mixed PDFs,
@@ -48,6 +50,7 @@ _POLICY_TABLE: Dict[str, Dict[str, Dict[str, Any]]] = {
         "definition": {"cov_threshold": 0.60, "force_multiquery": False},
         "procedure": {"cov_threshold": 0.56, "force_multiquery": False},
         "requirements": {"cov_threshold": 0.56, "force_multiquery": False},
+        "structure_list": {"cov_threshold": 0.56, "force_multiquery": False},
     },
 }
 

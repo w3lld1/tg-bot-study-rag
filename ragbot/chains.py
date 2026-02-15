@@ -33,7 +33,7 @@ def build_intent_chains(llm):
         (
             "system",
             "Верни ТОЛЬКО JSON (без markdown, без текста вокруг) в формате:\n"
-            '{"intent":"definition|procedure|requirements|numbers_and_dates|compare|summary|citation_only|default",'
+            '{"intent":"definition|procedure|requirements|numbers_and_dates|compare|summary|citation_only|structure_list|default",'
             '"confidence":0.0,'
             '"query":"..."}',
         ),

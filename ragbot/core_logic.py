@@ -14,7 +14,7 @@ from ragbot.text_utils import (
 )
 
 
-INTENTS = {"definition", "procedure", "requirements", "numbers_and_dates", "compare", "summary", "citation_only", "default"}
+INTENTS = {"definition", "procedure", "requirements", "numbers_and_dates", "compare", "summary", "citation_only", "structure_list", "default"}
 
 _CITATION_ONLY_STRONG = [
     "только цитаты", "только цитат",
@@ -79,6 +79,8 @@ def detect_intent_fast(user_question: str):
     q = (user_question or "").lower()
     if any(k in q for k in _CITATION_ONLY_STRONG):
         return "citation_only", 0.90
+    if any(k in q for k in ["какие раздел", "какие комитет", "какие главы", "перечень", "список", "list of", "which sections", "which committees"]):
+        return "structure_list", 0.88
     if any(k in q for k in ["сводк", "резюм", "кратко", "обзор", "выжимк", "самое важное", "коротко: о чём"]):
         return "summary", 0.85
     if any(k in q for k in ["сравни", "сравнить", "отлич", "разниц", "vs", "против"]):
@@ -363,6 +365,110 @@ def _build_hierarchical_context(
         "fallback_used": fallback_used,
     }
     return packed_context, report
+
+
+def _extract_numeric_value_unit(text: str) -> Optional[str]:
+    if not text:
+        return None
+    t = re.sub(r"[\u00A0\u202F]", " ", text)
+    m = re.search(
+        r"(?<!\w)([+-]?\d[\d\s]*(?:[.,]\d+)?)(?:\s*)(%|млрд\.?|млн\.?|тыс\.?|трлн\.?|руб\.?|рублей|п\.п\.?|пп)(?!\w)",
+        t,
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return None
+    val = re.sub(r"\s+", "", m.group(1)).replace("−", "-")
+    unit = m.group(2).lower().rstrip(".")
+    return f"{val} {unit}".strip()
+
+
+def finalize_numeric_answer(question: str, answer: str, context: str) -> str:
+    blocks = _context_blocks(context)
+    if not blocks:
+        return "В документе не найдено."
+
+    q_toks = coverage_tokens(question)
+    candidates: List[Tuple[float, str, str, str]] = []
+    for page, text in blocks:
+        parts = re.split(r"(?<=[\.!?])\s+", text)
+        for sent in parts:
+            s = sent.strip().strip('"')
+            if len(s) < 20:
+                continue
+            vu = _extract_numeric_value_unit(s)
+            if not vu:
+                continue
+            score = word_hit_ratio(q_toks, s) + (0.2 if has_number(s) else 0.0)
+            candidates.append((score, page, vu, clamp_text(s, 180)))
+
+    if not candidates:
+        return "В документе не найдено."
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    best_score, page, value_unit, quote = candidates[0]
+    if best_score < 0.12:
+        return "В документе не найдено."
+
+    return f"Итог: {value_unit} (стр. {page}) — \"{quote}\""
+
+
+def extract_structure_entities(question: str, context: str, max_items: int = 12) -> List[Dict[str, str]]:
+    blocks = _context_blocks(context)
+    q = (question or "").lower()
+    want_committees = "комитет" in q
+    entities: List[Dict[str, str]] = []
+    seen = set()
+
+    for page, text in blocks:
+        header = ""
+        mm = re.match(r"^([^\|\]]+?)\s*\|\s*(.+)$", page)
+        if mm:
+            page = mm.group(1).strip()
+            header = mm.group(2).strip()
+
+        if header and len(header) > 2:
+            key = re.sub(r"\W+", "", header.lower())
+            if key and key not in seen:
+                seen.add(key)
+                entities.append({"name": header, "page": page, "quote": clamp_text(text, 140)})
+
+        parts = re.split(r"(?<=[\.!?;])\s+", text)
+        for p in parts:
+            s = p.strip().strip('"')
+            if len(s) < 8:
+                continue
+            if want_committees:
+                m = re.search(r"([А-ЯA-ZЁ][^\n\.;:]{0,80}?комитет[^\n\.;:]{0,80})", s, flags=re.IGNORECASE)
+                if not m:
+                    continue
+                name = m.group(1).strip(" ,-:")
+            else:
+                m = re.match(r"(?:[-•\d\)\(]\s*)?([А-ЯA-ZЁ][^\n\.;:]{2,120})$", s)
+                if not m:
+                    continue
+                name = m.group(1).strip(" ,-:")
+                if len(name.split()) < 2:
+                    continue
+            key = re.sub(r"\W+", "", name.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            entities.append({"name": name, "page": page, "quote": clamp_text(s, 140)})
+            if len(entities) >= max_items:
+                return entities
+
+    return entities[:max_items]
+
+
+def format_structure_answer(question: str, context: str) -> str:
+    items = extract_structure_entities(question, context, max_items=12)
+    if not items:
+        return "В документе не найдено."
+    lines = []
+    for it in items:
+        lines.append(f"- {it['name']} (стр. {it['page']}) — \"{it['quote']}\"")
+    return "Список по документу:\n" + "\n".join(lines)
 
 
 def build_extractive_plan(
