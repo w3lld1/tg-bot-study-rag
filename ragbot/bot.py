@@ -16,29 +16,47 @@ from ragbot.text_utils import ensure_dir
 
 
 def user_root_dir(settings: Any, user_id: int) -> str:
+    """
+    Функция `user_root_dir` модуля `bot`.
+    """
     return os.path.join(settings.data_dir, "users", str(user_id))
 
 
 def user_index_dir(settings: Any, user_id: int) -> str:
+    """
+    Функция `user_index_dir` модуля `bot`.
+    """
     return os.path.join(user_root_dir(settings, user_id), "rag_index")
 
 
 def user_pdf_path(settings: Any, user_id: int) -> str:
+    """
+    Функция `user_pdf_path` модуля `bot`.
+    """
     return os.path.join(user_root_dir(settings, user_id), "document.pdf")
 
 
 def user_has_index(settings: Any, user_id: int) -> bool:
+    """
+    Функция `user_has_index` модуля `bot`.
+    """
     idx = user_index_dir(settings, user_id)
     return os.path.exists(os.path.join(idx, "meta.json")) and os.path.exists(os.path.join(idx, "chunks.jsonl.gz"))
 
 
 def reset_user_session(settings: Any, user_id: int) -> None:
+    """
+    Функция `reset_user_session` модуля `bot`.
+    """
     root = user_root_dir(settings, user_id)
     if os.path.exists(root):
         shutil.rmtree(root, ignore_errors=True)
 
 
 def is_pdf(doc: TgDocument) -> bool:
+    """
+    Проверяет условие/признак и возвращает булево значение.
+    """
     if doc.mime_type == "application/pdf":
         return True
     if (doc.file_name or "").lower().endswith(".pdf"):
@@ -47,6 +65,9 @@ def is_pdf(doc: TgDocument) -> bool:
 
 
 def build_dispatcher(settings: Any, agent_version: str, logger: logging.Logger) -> Dispatcher:
+    """
+    Собирает и возвращает компонент/цепочку `dispatcher` для этапов RAG-пайплайна.
+    """
     dp = Dispatcher()
 
     agents: Dict[int, BestStableRAGAgent] = {}
@@ -240,6 +261,9 @@ def build_dispatcher(settings: Any, agent_version: str, logger: logging.Logger) 
 
 
 async def run_polling(bot_token: str, settings: Any, agent_version: str, logger: logging.Logger) -> None:
+    """
+    Запускает основной runtime-цикл/операцию (bot polling или benchmark-процедуру).
+    """
     bot = Bot(token=bot_token)
     dp = build_dispatcher(settings=settings, agent_version=agent_version, logger=logger)
     logger.info("Bot starting (polling). data_dir=%s", settings.data_dir)

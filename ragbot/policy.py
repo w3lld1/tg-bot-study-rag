@@ -17,6 +17,9 @@ _ALLOWED_INTENTS = {
 
 @dataclass(frozen=True)
 class RetrievalRule:
+    """
+    Структура правила retrieval-политики для конкретного intent (порог покрытия и флаг force multiquery).
+    """
     cov_threshold: float
     force_multiquery: bool
 
@@ -53,14 +56,23 @@ _POLICY_TABLE: Dict[str, Dict[str, Dict[str, Any]]] = {
 
 
 def _strict_mode(settings: Any) -> bool:
+    """
+    Внутренний helper `_strict_mode` для инкапсуляции локальной логики модуля.
+    """
     return bool(getattr(settings, "policy_strict", False))
 
 
 def _normalize_variant(settings: Any) -> str:
+    """
+    Внутренний helper `_normalize_variant` для инкапсуляции локальной логики модуля.
+    """
     return str(getattr(settings, "policy_variant", "control") or "control").strip().lower()
 
 
 def get_policy_variant(settings: Any) -> str:
+    """
+    Функция `get_policy_variant` модуля `policy`.
+    """
     variant = _normalize_variant(settings)
     if variant in _ALLOWED_VARIANTS:
         return variant
@@ -70,6 +82,9 @@ def get_policy_variant(settings: Any) -> str:
 
 
 def _parse_rule(raw: Dict[str, Any], *, variant: str, intent: str) -> RetrievalRule:
+    """
+    Внутренний helper `_parse_rule` для инкапсуляции локальной логики модуля.
+    """
     if not isinstance(raw, dict):
         raise ValueError(f"Policy rule must be object, got {type(raw)} for {variant}/{intent}")
     if "cov_threshold" not in raw or "force_multiquery" not in raw:
@@ -83,6 +98,9 @@ def _parse_rule(raw: Dict[str, Any], *, variant: str, intent: str) -> RetrievalR
 
 
 def _validate_policy_table() -> None:
+    """
+    Внутренний helper `_validate_policy_table` для инкапсуляции локальной логики модуля.
+    """
     for variant, table in _POLICY_TABLE.items():
         if variant not in _ALLOWED_VARIANTS:
             raise ValueError(f"Unknown variant in _POLICY_TABLE: {variant}")
@@ -99,6 +117,9 @@ _validate_policy_table()
 
 
 def get_retrieval_policy(settings: Any, intent: str) -> Dict[str, Any]:
+    """
+    Функция `get_retrieval_policy` модуля `policy`.
+    """
     variant = get_policy_variant(settings)
     table = _POLICY_TABLE[variant]
 
@@ -121,10 +142,16 @@ def get_retrieval_policy(settings: Any, intent: str) -> Dict[str, Any]:
 
 
 def should_trigger_multiquery(*, multiquery_enabled: bool, force_multiquery: bool, coverage: float, cov_threshold: float) -> bool:
+    """
+    Возвращает булево решение о запуске дополнительного шага пайплайна.
+    """
     return bool(multiquery_enabled and (force_multiquery or coverage < cov_threshold))
 
 
 def get_second_pass_overrides(settings: Any, intent: str) -> Dict[str, Any]:
+    """
+    Функция `get_second_pass_overrides` модуля `policy`.
+    """
     variant = get_policy_variant(settings)
     if intent not in _ALLOWED_INTENTS and _strict_mode(settings):
         raise ValueError(f"Unknown intent='{intent}' for second pass")

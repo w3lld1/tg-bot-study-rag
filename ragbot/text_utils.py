@@ -33,21 +33,33 @@ EXPLICIT_BAD_PAGE = re.compile(r"\(стр\.\s*(xx|\?\?)\)", re.IGNORECASE)
 
 
 def ensure_dir(path: str) -> None:
+    """
+    Гарантирует подготовку окружения/ресурса перед выполнением дальнейших операций.
+    """
     os.makedirs(path, exist_ok=True)
 
 
 def normalize_query(q: str) -> str:
+    """
+    Нормализует входной текст для стабильного поиска и сравнения.
+    """
     q = (q or "").strip()
     q = re.sub(r"\s+", " ", q)
     return q
 
 
 def clamp_text(s: str, n: int) -> str:
+    """
+    Функция `clamp_text` модуля `text_utils`.
+    """
     s = re.sub(r"\s+", " ", (s or "")).strip()
     return s[:n]
 
 
 def safe_page_range(meta: Dict[str, Any]) -> str:
+    """
+    Функция `safe_page_range` модуля `text_utils`.
+    """
     p1 = meta.get("page_start", meta.get("page", None))
     p2 = meta.get("page_end", meta.get("page", None))
     try:
@@ -65,6 +77,9 @@ def safe_page_range(meta: Dict[str, Any]) -> str:
 
 
 def doc_key(d: Any) -> Tuple[Any, Any, Any, Any]:
+    """
+    Функция `doc_key` модуля `text_utils`.
+    """
     m = getattr(d, "metadata", None) or {}
     return (
         m.get("source", ""),
@@ -75,6 +90,9 @@ def doc_key(d: Any) -> Tuple[Any, Any, Any, Any]:
 
 
 def dedup_docs(docs: List[Any], max_total: int = 240) -> List[Any]:
+    """
+    Функция `dedup_docs` модуля `text_utils`.
+    """
     seen = set()
     out: List[Any] = []
     for d in docs:
@@ -89,6 +107,9 @@ def dedup_docs(docs: List[Any], max_total: int = 240) -> List[Any]:
 
 
 def coverage_tokens(q: str) -> List[str]:
+    """
+    Функция `coverage_tokens` модуля `text_utils`.
+    """
     q = (q or "").lower()
     words = re.findall(r"[a-zа-яё0-9]+", q, flags=re.IGNORECASE)
     stop = {
@@ -100,6 +121,9 @@ def coverage_tokens(q: str) -> List[str]:
 
 
 def word_hit_ratio(tokens: List[str], text: str) -> float:
+    """
+    Функция `word_hit_ratio` модуля `text_utils`.
+    """
     if not tokens:
         return 0.0
     hits = 0
@@ -110,6 +134,9 @@ def word_hit_ratio(tokens: List[str], text: str) -> float:
 
 
 def diversify_docs(docs: List[Any], max_per_group: int) -> List[Any]:
+    """
+    Функция `diversify_docs` модуля `text_utils`.
+    """
     counts = defaultdict(int)
     out: List[Any] = []
     for d in docs:
@@ -123,10 +150,16 @@ def diversify_docs(docs: List[Any], max_per_group: int) -> List[Any]:
 
 
 def has_number(text: str) -> bool:
+    """
+    Проверяет условие/признак и возвращает булево значение.
+    """
     return bool(NUM_RE.search(text or ""))
 
 
 def fix_broken_numbers(text: str) -> str:
+    """
+    Функция `fix_broken_numbers` модуля `text_utils`.
+    """
     if not text:
         return text
     text = text.replace("\u00A0", " ").replace("\u202F", " ")
@@ -138,12 +171,18 @@ def fix_broken_numbers(text: str) -> str:
 
 
 def contains_fake_pages(s: str) -> bool:
+    """
+    Функция `contains_fake_pages` модуля `text_utils`.
+    """
     if not s:
         return False
     return bool(BAD_PAGE_PAT.search(s) or EXPLICIT_BAD_PAGE.search(s))
 
 
 def extract_numbers_from_text(s: str) -> List[str]:
+    """
+    Извлекает структуру/сущности/числа из текста для последующей валидации и ответа.
+    """
     if not s:
         return []
     nums = re.findall(r"(?<!\w)[+-]?\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?%?(?!\w)", s)

@@ -42,11 +42,20 @@ _CITATION_RE = re.compile(r"(?:\(\s*)?стр\.?\s*\d+", re.IGNORECASE)
 
 
 def _has_citation(answer: str) -> bool:
+    """
+    Внутренний helper `_has_citation` для инкапсуляции локальной логики модуля.
+    """
     return bool(_CITATION_RE.search(answer or ""))
 
 
 class BestStableRAGAgent:
+    """
+    Основной RAG-агент: оркеструет retrieval, планирование, генерацию, валидацию и fallback-логику ответа.
+    """
     def __init__(self, settings: Any, index_dir: str, agent_version: str):
+        """
+        Внутренний helper `__init__` для инкапсуляции локальной логики модуля.
+        """
         self.settings = settings
         self.index_dir = index_dir
         self.agent_version = agent_version
@@ -81,19 +90,31 @@ class BestStableRAGAgent:
         self._last_trace: Dict[str, Any] = {}
 
     def get_last_trace(self) -> Dict[str, Any]:
+        """
+        Функция `get_last_trace` модуля `agent`.
+        """
         return dict(self._last_trace or {})
 
     def _bm25_invoke(self, q: str, k: int) -> List[Document]:
+        """
+        Внутренний helper `_bm25_invoke` для инкапсуляции локальной логики модуля.
+        """
         self.bm25.k = max(1, int(k))
         return (self.bm25.invoke(q) or [])[:k]
 
     def _retrieve_single(self, q: str, k_per_query: int) -> List[Document]:
+        """
+        Внутренний helper `_retrieve_single` для инкапсуляции локальной логики модуля.
+        """
         q = normalize_query(q)
         bm25_docs = self._bm25_invoke(q, k_per_query)
         faiss_docs = self.vectorstore.similarity_search(q, k=k_per_query)
         return dedup_docs(bm25_docs + faiss_docs, max_total=120)
 
     def _retrieve_with_trace(self, query: str, intent: str, overrides: Optional[Dict[str, Any]] = None) -> Tuple[List[Document], Dict[str, Any]]:
+        """
+        Выполняет retrieval с трассировкой параметров/решений и возвращает документы + trace.
+        """
         query = normalize_query(query)
         o = overrides or {}
 
@@ -223,10 +244,16 @@ class BestStableRAGAgent:
         return docs, trace
 
     def _retrieve(self, query: str, intent: str, overrides: Optional[Dict[str, Any]] = None) -> List[Document]:
+        """
+        Внутренний helper `_retrieve` для инкапсуляции локальной логики модуля.
+        """
         docs, _ = self._retrieve_with_trace(query, intent, overrides=overrides)
         return docs
 
     def _intent_stage(self, user_question: str) -> Dict[str, Any]:
+        """
+        Внутренний helper `_intent_stage` для инкапсуляции локальной логики модуля.
+        """
         intent_obj = get_intent_hybrid(
             self.intent_chain_json,
             self.intent_chain_str,
@@ -239,6 +266,9 @@ class BestStableRAGAgent:
         return {"intent": intent, "confidence": conf, "query": query}
 
     def _answer_stage(self, intent: str, user_question: str, context: str, plan: Optional[Dict[str, Any]] = None, fallback_answer: str = "") -> str:
+        """
+        Внутренний helper `_answer_stage` для инкапсуляции локальной логики модуля.
+        """
         synthesis_context = (plan or {}).get("synthesis_context", context)
         if intent == "summary":
             return self.answer_chain_summary.invoke({"question": user_question, "context": synthesis_context})
@@ -253,6 +283,9 @@ class BestStableRAGAgent:
         return self.answer_chain_default.invoke({"question": user_question, "context": synthesis_context})
 
     def _validation_stage(self, intent: str, answer: str, context: str) -> Dict[str, Any]:
+        """
+        Внутренний helper `_validation_stage` для инкапсуляции локальной логики модуля.
+        """
         has_fake_pages = contains_fake_pages(answer)
         numbers_mismatch = intent in {"numbers_and_dates", "compare"} and answer_numbers_not_in_context(answer, context)
         not_found = is_not_found_answer(answer)
@@ -267,9 +300,15 @@ class BestStableRAGAgent:
         }
 
     def _second_pass_overrides(self, intent: str) -> Dict[str, Any]:
+        """
+        Внутренний helper `_second_pass_overrides` для инкапсуляции локальной логики модуля.
+        """
         return get_second_pass_overrides(self.settings, intent)
 
     def _should_second_pass(self, intent: str, validation: Dict[str, Any]) -> bool:
+        """
+        Внутренний helper `_should_second_pass` для инкапсуляции локальной логики модуля.
+        """
         return bool(
             self.settings.second_pass_enabled
             and (validation["needs_retry"] or validation["not_found"] or validation["citation_missing"])
@@ -277,6 +316,9 @@ class BestStableRAGAgent:
         )
 
     def _repair_stage(self, user_question: str, answer: str, context: str, intent: str) -> str:
+        """
+        Внутренний helper `_repair_stage` для инкапсуляции локальной логики модуля.
+        """
         if context and (not is_not_found_answer(answer)) and (not _has_citation(answer)):
             citations = self.answer_chain_citation_only.invoke({"question": user_question, "context": context})
             if citations and (not is_not_found_answer(citations)) and _has_citation(citations):
@@ -295,6 +337,9 @@ class BestStableRAGAgent:
         return answer
 
     def _enforce_numbers_terminal_quality(self, answer: str) -> Dict[str, Any]:
+        """
+        Применяет финальный quality-guard для numeric-ответов: число+цитата или честный not found.
+        """
         ans = (answer or "").strip()
         low = ans.lower()
 
@@ -310,6 +355,9 @@ class BestStableRAGAgent:
         return {"answer": "В документе не найдено.", "guard_applied": True, "reason": "missing_numeric_or_citation"}
 
     def ask(self, user_question: str) -> str:
+        """
+        Полный pipeline обработки вопроса: intent → retrieval → answer → validation → repair.
+        """
         t0 = time.time()
         user_question = normalize_query(user_question)
 

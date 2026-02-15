@@ -21,12 +21,21 @@ logger = logging.getLogger("tg-rag-bot")
 
 
 class CachedEmbeddings(Embeddings):
+    """
+    Обёртка над embeddings-моделью с LRU-кэшем для повторяющихся query-эмбеддингов.
+    """
     def __init__(self, base: Embeddings, max_size: int = 512):
+        """
+        Внутренний helper `__init__` для инкапсуляции локальной логики модуля.
+        """
         self.base = base
         self.max_size = max_size
         self._cache: OrderedDict[str, List[float]] = OrderedDict()
 
     def embed_query(self, text: str) -> List[float]:
+        """
+        Функция `embed_query` модуля `indexing`.
+        """
         key = normalize_query(text)
         if key in self._cache:
             self._cache.move_to_end(key)
@@ -39,10 +48,16 @@ class CachedEmbeddings(Embeddings):
         return vec
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """
+        Функция `embed_documents` модуля `indexing`.
+        """
         return self.base.embed_documents(texts)
 
 
 def build_embeddings(settings: Any) -> Embeddings:
+    """
+    Собирает и возвращает компонент/цепочку `embeddings` для этапов RAG-пайплайна.
+    """
     giga_api_key = os.getenv("GIGACHAT_API_KEY") or os.getenv("GIGA_API_KEY")
     if not giga_api_key:
         raise RuntimeError("Не найден ключ. Установи env GIGACHAT_API_KEY (или GIGA_API_KEY).")
@@ -56,6 +71,9 @@ def build_embeddings(settings: Any) -> Embeddings:
 
 
 def load_pdf_pages(pdf_path: str) -> List[Document]:
+    """
+    Загружает данные/артефакты, необходимые для этапа `pdf_pages`.
+    """
     docs: List[Document] = []
     with fitz.open(pdf_path) as pdf:
         for i in range(pdf.page_count):
@@ -88,6 +106,9 @@ _HEADING_IGNORE = [
 
 
 def detect_heading_on_page(page_text: str) -> Optional[str]:
+    """
+    Определяет тип/структуру входных данных по эвристическим правилам.
+    """
     lines = [ln.strip() for ln in (page_text or "").splitlines() if ln.strip()]
     for ln in lines[:12]:
         if len(ln) < 6:
@@ -105,6 +126,9 @@ def detect_heading_on_page(page_text: str) -> Optional[str]:
 
 
 def build_parent_docs_section_aware(pages: List[Document]) -> List[Document]:
+    """
+    Собирает и возвращает компонент/цепочку `parent_docs_section_aware` для этапов RAG-пайплайна.
+    """
     parents: List[Document] = []
     cur_pages: List[Document] = []
     cur_title: str = "Без заголовка"
@@ -144,6 +168,9 @@ def build_parent_docs_section_aware(pages: List[Document]) -> List[Document]:
 
 
 def chunk_parent_docs(parent_docs: List[Document], settings: Any) -> List[Document]:
+    """
+    Функция `chunk_parent_docs` модуля `indexing`.
+    """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
@@ -161,6 +188,9 @@ def chunk_parent_docs(parent_docs: List[Document], settings: Any) -> List[Docume
 
 
 def _write_chunks_jsonl_gz(path: str, docs: List[Document]) -> None:
+    """
+    Внутренний helper `_write_chunks_jsonl_gz` для инкапсуляции локальной логики модуля.
+    """
     with gzip.open(path, "wt", encoding="utf-8") as f:
         for d in docs:
             rec = {"page_content": d.page_content, "metadata": d.metadata or {}}
@@ -168,6 +198,9 @@ def _write_chunks_jsonl_gz(path: str, docs: List[Document]) -> None:
 
 
 def _read_chunks_jsonl_gz(path: str) -> List[Document]:
+    """
+    Внутренний helper `_read_chunks_jsonl_gz` для инкапсуляции локальной логики модуля.
+    """
     out: List[Document] = []
     with gzip.open(path, "rt", encoding="utf-8") as f:
         for line in f:
@@ -180,6 +213,9 @@ def _read_chunks_jsonl_gz(path: str) -> List[Document]:
 
 
 def _check_settings_compat(stored: dict, current: Any) -> None:
+    """
+    Выполняет проверку совместимости/валидности и бросает исключение при нарушении условий.
+    """
     if current.allow_index_settings_mismatch:
         return
     stored_s = (stored or {}).get("settings") or {}
@@ -196,6 +232,9 @@ def _check_settings_compat(stored: dict, current: Any) -> None:
 
 
 def ingest_pdf(pdf_path: str, settings: Any, index_dir: str, agent_version: str) -> None:
+    """
+    Проводит полный ingest-процесс: чтение PDF, чанкинг и построение индексов.
+    """
     faiss_dir = os.path.join(index_dir, "faiss")
     meta_json = os.path.join(index_dir, "meta.json")
     chunks_jsonl_gz = os.path.join(index_dir, "chunks.jsonl.gz")
@@ -240,6 +279,9 @@ def ingest_pdf(pdf_path: str, settings: Any, index_dir: str, agent_version: str)
 
 
 def load_index(settings: Any, index_dir: str, llm_builder):
+    """
+    Загружает данные/артефакты, необходимые для этапа `index`.
+    """
     faiss_dir = os.path.join(index_dir, "faiss")
     meta_json = os.path.join(index_dir, "meta.json")
     chunks_jsonl_gz = os.path.join(index_dir, "chunks.jsonl.gz")
